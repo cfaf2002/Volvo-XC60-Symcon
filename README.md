@@ -128,6 +128,7 @@ Armin Frohwerk
 
 ## Versionen
 
+- **1.3** – Funktioniert auch ohne das Recht conve:vehicle_relation (dann Fahrgestellnummer eintragen)
 - **1.2** – Angefragte Rechte (Scopes) einstellbar, fehlende Rechte führen nicht mehr zum Fehler
 - **1.1** – „Bei Volvo anmelden“ erst aktiv, wenn alle Zugangsdaten eingetragen sind; zusätzlich „Anmelde-Adresse anzeigen“
 - **1.0** – Erste Version

@@ -362,7 +362,11 @@ class Volvo extends IPSModule
 
         try {
             $vin = $this->GetVin();
-            $this->LoadVehicleDetails($vin);
+            // Modell/Akkugröße/Bild braucht das Recht conve:vehicle_relation - optional
+            $this->Optional(function () use ($vin) {
+                $this->LoadVehicleDetails($vin);
+                return [];
+            });
 
             // Energie (Akku, Laden) - ältere Hybride liefern hier nicht alles
             // Einzelne Bereiche dürfen fehlen (Recht nicht freigegeben oder
@@ -430,7 +434,11 @@ class Volvo extends IPSModule
             return $vin;
         }
 
-        $list = $this->Api(self::CONNECTED);
+        try {
+            $list = $this->Api(self::CONNECTED);
+        } catch (VolvoForbiddenException $e) {
+            throw new Exception('Fahrzeugliste nicht erlaubt (Recht conve:vehicle_relation fehlt). Bitte die Fahrgestellnummer in der Instanz eintragen.');
+        }
         $vin = (string) ($list['data'][0]['vin'] ?? '');
         if ($vin === '') {
             throw new Exception('Kein Fahrzeug im Volvo-Konto gefunden.');
