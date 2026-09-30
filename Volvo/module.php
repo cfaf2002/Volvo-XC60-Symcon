@@ -96,8 +96,8 @@ class Volvo extends IPSModule
             return;
         }
 
-        if ($this->ReadPropertyString('ApiKey') === '' || $this->ReadPropertyString('ClientId') === ''
-            || $this->ReadPropertyString('ClientSecret') === '') {
+        if (trim($this->ReadPropertyString('ApiKey')) === '' || trim($this->ReadPropertyString('ClientId')) === ''
+            || trim($this->ReadPropertyString('ClientSecret')) === '') {
             $this->SetTimerInterval('UpdateTimer', 0);
             $this->SetStatus(201);
             return;
@@ -131,8 +131,8 @@ class Volvo extends IPSModule
 
         // "Bei Volvo anmelden" erst freigeben, wenn alle Angaben da sind -
         // sonst würde der Browser einen Hinweistext als Adresse öffnen
-        $ready = $this->ReadPropertyString('ApiKey') !== '' && $this->ReadPropertyString('ClientId') !== ''
-            && $this->ReadPropertyString('ClientSecret') !== '' && $this->RedirectUri() !== '';
+        $ready = trim($this->ReadPropertyString('ApiKey')) !== '' && trim($this->ReadPropertyString('ClientId')) !== ''
+            && trim($this->ReadPropertyString('ClientSecret')) !== '' && $this->RedirectUri() !== '';
         $hint = $ready
             ? 'Alles eingetragen – jetzt „Bei Volvo anmelden“ klicken.'
             : 'Zum Anmelden zuerst VCC API Key, Client-ID, Client-Secret und Weiterleitungs-Adresse eintragen und „Übernehmen“ klicken.';
@@ -174,7 +174,7 @@ class Volvo extends IPSModule
     public function GetLoginUrl(): string
     {
         $redirect = $this->RedirectUri();
-        if ($this->ReadPropertyString('ClientId') === '' || $redirect === '') {
+        if (trim($this->ReadPropertyString('ClientId')) === '' || $redirect === '') {
             return 'about:blank';
         }
 
@@ -187,7 +187,7 @@ class Volvo extends IPSModule
 
         return self::AUTHORIZE_URL . '?' . http_build_query([
             'response_type'         => 'code',
-            'client_id'             => $this->ReadPropertyString('ClientId'),
+            'client_id'             => trim($this->ReadPropertyString('ClientId')),
             'redirect_uri'          => $redirect,
             'scope'                 => $this->RequestedScopes(),
             'code_challenge'        => $challenge,
@@ -321,7 +321,7 @@ class Volvo extends IPSModule
 
     private function RequestToken(array $body): string
     {
-        $basic = base64_encode($this->ReadPropertyString('ClientId') . ':' . $this->ReadPropertyString('ClientSecret'));
+        $basic = base64_encode(trim($this->ReadPropertyString('ClientId')) . ':' . trim($this->ReadPropertyString('ClientSecret')));
 
         [$code, $raw] = $this->HttpRequest('POST', self::TOKEN_URL, [
             'Authorization: Basic ' . $basic,
@@ -552,7 +552,7 @@ class Volvo extends IPSModule
         $token = $this->GetAccessToken();
         $headers = [
             'Authorization: Bearer ' . $token,
-            'vcc-api-key: ' . $this->ReadPropertyString('ApiKey'),
+            'vcc-api-key: ' . trim($this->ReadPropertyString('ApiKey')),
             'Accept: application/json'
         ];
 
@@ -565,6 +565,9 @@ class Volvo extends IPSModule
             [$code, $raw] = $this->HttpRequest('GET', self::API . $path, $headers, null);
         }
 
+        if ($code === 401 && stripos($raw, 'VCC-API-KEY') !== false) {
+            throw new Exception('VCC API Key ungültig – bitte den Primary Key aus derselben Volvo-Anwendung eintragen wie Client-ID und Client-Secret.');
+        }
         if ($code === 404) {
             return [];
         }

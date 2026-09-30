@@ -118,6 +118,7 @@ VOLVO_Logout(int $InstanzID)
   nicht angehakt sind. Entweder in der Volvo-Anwendung anhaken oder aus dem Feld „Angefragte Rechte“ entfernen.
   Fehlende Rechte sind kein Problem – die zugehörigen Werte werden dann nur nicht abgerufen.
 
+- **„VCC API Key ungültig“:** Den Primary Key aus derselben Volvo-Anwendung nehmen wie Client-ID und Client-Secret (nicht die Client-ID).
 - **HTTP 403:** API Key falsch oder Scopes in der Volvo-Anwendung nicht freigeschaltet.
 - **Anmeldung abgelehnt:** Client-ID/-Secret prüfen; Redirect URI in Volvo-Anwendung und Instanz müssen exakt gleich sein.
 - Alle Anfragen stehen im **Debug-Fenster** der Instanz (Fahrgestellnummer und Tokens werden ausgeblendet).
@@ -128,6 +129,7 @@ Armin Frohwerk
 
 ## Versionen
 
+- **1.4** – Klare Meldung bei ungültigem VCC API Key, Leerzeichen in den Zugangsdaten werden ignoriert
 - **1.3** – Funktioniert auch ohne das Recht conve:vehicle_relation (dann Fahrgestellnummer eintragen)
 - **1.2** – Angefragte Rechte (Scopes) einstellbar, fehlende Rechte führen nicht mehr zum Fehler
 - **1.1** – „Bei Volvo anmelden“ erst aktiv, wenn alle Zugangsdaten eingetragen sind; zusätzlich „Anmelde-Adresse anzeigen“
