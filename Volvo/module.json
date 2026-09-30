@@ -1,0 +1,14 @@
+{
+    "id": "{3E673B62-F8FD-4C29-9848-EEACA895B4F3}",
+    "name": "Volvo",
+    "type": 3,
+    "vendor": "Volvo Cars",
+    "aliases": [
+        "Volvo Fahrzeug"
+    ],
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "VOLVO",
+    "url": "https://github.com/cfaf2002/Volvo-Symcon"
+}

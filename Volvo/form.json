@@ -1,0 +1,145 @@
+{
+    "elements": [
+        {
+            "type": "CheckBox",
+            "name": "Active",
+            "caption": "Instanz aktiv"
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Zugangsdaten aus dem Volvo Developer Portal",
+            "expanded": true,
+            "items": [
+                {
+                    "type": "PasswordTextBox",
+                    "name": "ApiKey",
+                    "caption": "VCC API Key",
+                    "width": "420px"
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "ClientId",
+                    "caption": "Client-ID",
+                    "width": "420px"
+                },
+                {
+                    "type": "PasswordTextBox",
+                    "name": "ClientSecret",
+                    "caption": "Client-Secret",
+                    "width": "420px"
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "RedirectUri",
+                    "caption": "Weiterleitungs-Adresse (Redirect URI)",
+                    "width": "420px"
+                },
+                {
+                    "type": "Label",
+                    "caption": "Leer lassen = {REDIRECT}. Genau diese Adresse muss in der Volvo-Anwendung als Redirect URI eingetragen sein."
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "VIN",
+                    "caption": "Fahrgestellnummer (leer = erstes Fahrzeug im Konto)",
+                    "width": "420px"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "UpdateInterval",
+                    "caption": "Abrufintervall",
+                    "suffix": "Minuten",
+                    "minimum": 1,
+                    "maximum": 120
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Benachrichtigung",
+            "items": [
+                {
+                    "type": "SelectInstance",
+                    "name": "NotifyInstance",
+                    "caption": "Visualisierung für Push, wenn die Anmeldung erneuert werden muss",
+                    "width": "420px"
+                }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "type": "Label",
+            "caption": "Status: {LOGIN}   ·   Fahrzeug: {VEHICLE}"
+        },
+        {
+            "type": "RowLayout",
+            "items": [
+                {
+                    "type": "Button",
+                    "caption": "Bei Volvo anmelden",
+                    "onClick": "echo VOLVO_GetLoginUrl($id);",
+                    "link": true
+                },
+                {
+                    "type": "Button",
+                    "caption": "Jetzt aktualisieren",
+                    "onClick": "echo VOLVO_Update($id) ? 'Aktualisiert.' : 'Fehler – siehe Variable \"Letzter Fehler\".';"
+                },
+                {
+                    "type": "Button",
+                    "caption": "Fahrzeuge anzeigen",
+                    "onClick": "echo VOLVO_ListVehicles($id);"
+                },
+                {
+                    "type": "Button",
+                    "caption": "Fahrzeugbild öffnen",
+                    "onClick": "echo VOLVO_GetVehicleImageUrl($id);",
+                    "link": true
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Anmeldung ohne Symcon Connect abschließen",
+            "items": [
+                {
+                    "type": "Label",
+                    "caption": "Nach der Anmeldung bei Volvo landet der Browser auf der Weiterleitungs-Adresse. Die komplette Adresse aus der Adresszeile (enthält „code=…“) hier einfügen:"
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "ManualUrl",
+                    "caption": "Adresse nach der Anmeldung",
+                    "width": "600px"
+                },
+                {
+                    "type": "Button",
+                    "caption": "Anmeldung abschließen",
+                    "onClick": "echo VOLVO_CompleteLogin($id, $ManualUrl);"
+                }
+            ]
+        },
+        {
+            "type": "PopupButton",
+            "caption": "Abmelden",
+            "popup": {
+                "caption": "Gespeicherte Anmeldung bei Volvo verwerfen?",
+                "items": [
+                    {
+                        "type": "Button",
+                        "caption": "Ja, abmelden",
+                        "onClick": "VOLVO_Logout($id);"
+                    }
+                ]
+            }
+        }
+    ],
+    "status": [
+        { "code": 102, "icon": "active", "caption": "Verbunden" },
+        { "code": 104, "icon": "inactive", "caption": "Instanz ist deaktiviert" },
+        { "code": 201, "icon": "error", "caption": "Bitte API Key, Client-ID und Client-Secret eintragen" },
+        { "code": 202, "icon": "error", "caption": "Anmeldung bei Volvo erforderlich – „Bei Volvo anmelden“ klicken" },
+        { "code": 203, "icon": "error", "caption": "Volvo API nicht erreichbar oder Fehler (siehe „Letzter Fehler“)" }
+    ]
+}
