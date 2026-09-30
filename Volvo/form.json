@@ -73,13 +73,25 @@
             "caption": "Status: {LOGIN}   ·   Fahrzeug: {VEHICLE}"
         },
         {
+            "type": "Label",
+            "name": "LoginHint",
+            "caption": "{LOGINHINT}"
+        },
+        {
             "type": "RowLayout",
             "items": [
                 {
                     "type": "Button",
                     "caption": "Bei Volvo anmelden",
                     "onClick": "echo VOLVO_GetLoginUrl($id);",
-                    "link": true
+                    "link": true,
+                    "name": "LoginButton"
+                },
+                {
+                    "type": "Button",
+                    "name": "LoginUrlButton",
+                    "caption": "Anmelde-Adresse anzeigen",
+                    "onClick": "echo VOLVO_GetLoginUrl($id);"
                 },
                 {
                     "type": "Button",
@@ -136,10 +148,30 @@
         }
     ],
     "status": [
-        { "code": 102, "icon": "active", "caption": "Verbunden" },
-        { "code": 104, "icon": "inactive", "caption": "Instanz ist deaktiviert" },
-        { "code": 201, "icon": "error", "caption": "Bitte API Key, Client-ID und Client-Secret eintragen" },
-        { "code": 202, "icon": "error", "caption": "Anmeldung bei Volvo erforderlich – „Bei Volvo anmelden“ klicken" },
-        { "code": 203, "icon": "error", "caption": "Volvo API nicht erreichbar oder Fehler (siehe „Letzter Fehler“)" }
+        {
+            "code": 102,
+            "icon": "active",
+            "caption": "Verbunden"
+        },
+        {
+            "code": 104,
+            "icon": "inactive",
+            "caption": "Instanz ist deaktiviert"
+        },
+        {
+            "code": 201,
+            "icon": "error",
+            "caption": "Bitte API Key, Client-ID und Client-Secret eintragen"
+        },
+        {
+            "code": 202,
+            "icon": "error",
+            "caption": "Anmeldung bei Volvo erforderlich – „Bei Volvo anmelden“ klicken"
+        },
+        {
+            "code": 203,
+            "icon": "error",
+            "caption": "Volvo API nicht erreichbar oder Fehler (siehe „Letzter Fehler“)"
+        }
     ]
 }

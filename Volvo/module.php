@@ -128,6 +128,25 @@ class Volvo extends IPSModule
         $loggedIn = $this->ReadAttributeString('RefreshToken') !== '';
         $vehicle = json_decode($this->ReadAttributeString('Vehicle'), true) ?: [];
 
+        // "Bei Volvo anmelden" erst freigeben, wenn alle Angaben da sind -
+        // sonst würde der Browser einen Hinweistext als Adresse öffnen
+        $ready = $this->ReadPropertyString('ApiKey') !== '' && $this->ReadPropertyString('ClientId') !== ''
+            && $this->ReadPropertyString('ClientSecret') !== '' && $this->RedirectUri() !== '';
+        $hint = $ready
+            ? 'Alles eingetragen – jetzt „Bei Volvo anmelden“ klicken.'
+            : 'Zum Anmelden zuerst VCC API Key, Client-ID, Client-Secret und Weiterleitungs-Adresse eintragen und „Übernehmen“ klicken.';
+        foreach ($form['actions'] as &$action) {
+            if (($action['name'] ?? '') === 'LoginHint') {
+                $action['caption'] = $hint;
+            }
+            foreach ($action['items'] ?? [] as $i => $item) {
+                if (in_array($item['name'] ?? '', ['LoginButton', 'LoginUrlButton'], true)) {
+                    $action['items'][$i]['enabled'] = $ready;
+                }
+            }
+        }
+        unset($action);
+
         array_walk_recursive($form, function (&$value) use ($suggest, $loggedIn, $vehicle) {
             if (!is_string($value)) {
                 return;
@@ -155,7 +174,7 @@ class Volvo extends IPSModule
     {
         $redirect = $this->RedirectUri();
         if ($this->ReadPropertyString('ClientId') === '' || $redirect === '') {
-            return 'Bitte zuerst Client-ID und Weiterleitungs-Adresse eintragen und übernehmen.';
+            return 'about:blank';
         }
 
         $verifier = rtrim(strtr(base64_encode(random_bytes(64)), '+/', '-_'), '=');

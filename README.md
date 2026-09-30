@@ -123,4 +123,5 @@ Armin Frohwerk
 
 ## Versionen
 
+- **1.1** – „Bei Volvo anmelden“ erst aktiv, wenn alle Zugangsdaten eingetragen sind; zusätzlich „Anmelde-Adresse anzeigen“
 - **1.0** – Erste Version
