@@ -63,6 +63,7 @@ Danach mit **„Fahrzeuge anzeigen“** prüfen, ob dein Fahrzeug gefunden wird.
 |---|---|
 | VCC API Key, Client-ID, Client-Secret | Aus der Volvo-Anwendung im Developer Portal |
 | Weiterleitungs-Adresse | Leer = Symcon-Connect-Adresse + `/hook/volvo`. Muss exakt der Redirect URI der Volvo-Anwendung entsprechen |
+| Angefragte Rechte (Scopes) | Muss zu den in der Volvo-Anwendung angehakten Rechten passen (siehe Fehlersuche) |
 | Fahrgestellnummer | Leer = erstes Fahrzeug im Konto |
 | Abrufintervall | Standard 5 Minuten (Volvo erlaubt 10.000 Abfragen pro Tag; ein Abruf braucht ca. 5) |
 | Visualisierung für Push | Meldung, wenn die Anmeldung erneuert werden muss |
@@ -113,6 +114,10 @@ VOLVO_Logout(int $InstanzID)
 
 ## Fehlersuche
 
+- **„The requested scope is invalid, unknown, malformed …“:** In der Instanz stehen Rechte, die in der Volvo-Anwendung
+  nicht angehakt sind. Entweder in der Volvo-Anwendung anhaken oder aus dem Feld „Angefragte Rechte“ entfernen.
+  Fehlende Rechte sind kein Problem – die zugehörigen Werte werden dann nur nicht abgerufen.
+
 - **HTTP 403:** API Key falsch oder Scopes in der Volvo-Anwendung nicht freigeschaltet.
 - **Anmeldung abgelehnt:** Client-ID/-Secret prüfen; Redirect URI in Volvo-Anwendung und Instanz müssen exakt gleich sein.
 - Alle Anfragen stehen im **Debug-Fenster** der Instanz (Fahrgestellnummer und Tokens werden ausgeblendet).
@@ -123,5 +128,6 @@ Armin Frohwerk
 
 ## Versionen
 
+- **1.2** – Angefragte Rechte (Scopes) einstellbar, fehlende Rechte führen nicht mehr zum Fehler
 - **1.1** – „Bei Volvo anmelden“ erst aktiv, wenn alle Zugangsdaten eingetragen sind; zusätzlich „Anmelde-Adresse anzeigen“
 - **1.0** – Erste Version

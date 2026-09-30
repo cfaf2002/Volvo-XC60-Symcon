@@ -40,6 +40,16 @@
                 },
                 {
                     "type": "ValidationTextBox",
+                    "name": "Scopes",
+                    "caption": "Angefragte Rechte (Scopes, mit Leerzeichen getrennt)",
+                    "width": "700px"
+                },
+                {
+                    "type": "Label",
+                    "caption": "Hier dürfen nur Rechte stehen, die in der Volvo-Anwendung angehakt sind – sonst lehnt Volvo die Anmeldung ab („requested scope is invalid“). Fehlt ein Recht, wird der zugehörige Wert einfach nicht abgerufen."
+                },
+                {
+                    "type": "ValidationTextBox",
                     "name": "VIN",
                     "caption": "Fahrgestellnummer (leer = erstes Fahrzeug im Konto)",
                     "width": "420px"

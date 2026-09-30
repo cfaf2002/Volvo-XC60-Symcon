@@ -56,6 +56,7 @@ class Volvo extends IPSModule
         $this->RegisterPropertyString('VIN', '');
         $this->RegisterPropertyInteger('UpdateInterval', 5);
         $this->RegisterPropertyInteger('NotifyInstance', 0);
+        $this->RegisterPropertyString('Scopes', implode(' ', self::SCOPES));
 
         $this->RegisterAttributeString('AccessToken', '');
         $this->RegisterAttributeString('RefreshToken', '');
@@ -188,11 +189,19 @@ class Volvo extends IPSModule
             'response_type'         => 'code',
             'client_id'             => $this->ReadPropertyString('ClientId'),
             'redirect_uri'          => $redirect,
-            'scope'                 => implode(' ', self::SCOPES),
+            'scope'                 => $this->RequestedScopes(),
             'code_challenge'        => $challenge,
             'code_challenge_method' => 'S256',
             'state'                 => $state
         ], '', '&', PHP_QUERY_RFC3986);
+    }
+
+    /** Angefragte Rechte: aus der Instanz, "openid" ist immer dabei. */
+    private function RequestedScopes(): string
+    {
+        $list = preg_split('/[\s,;]+/', trim($this->ReadPropertyString('Scopes'))) ?: [];
+        $list = array_values(array_unique(array_filter(array_merge(['openid'], $list))));
+        return implode(' ', $list);
     }
 
     /**
@@ -356,11 +365,13 @@ class Volvo extends IPSModule
             $this->LoadVehicleDetails($vin);
 
             // Energie (Akku, Laden) - ältere Hybride liefern hier nicht alles
-            $energy = $this->Api(self::ENERGY . '/' . $vin . '/state');
-            $fuel = $this->ApiData(self::CONNECTED . '/' . $vin . '/fuel');
-            $stats = $this->ApiData(self::CONNECTED . '/' . $vin . '/statistics');
-            $odo = $this->ApiData(self::CONNECTED . '/' . $vin . '/odometer');
-            $doors = $this->ApiData(self::CONNECTED . '/' . $vin . '/doors');
+            // Einzelne Bereiche dürfen fehlen (Recht nicht freigegeben oder
+            // vom Fahrzeug nicht unterstützt) - dann einfach überspringen
+            $energy = $this->Optional(fn () => $this->Api(self::ENERGY . '/' . $vin . '/state'));
+            $fuel = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/fuel'));
+            $stats = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/statistics'));
+            $odo = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/odometer'));
+            $doors = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/doors'));
 
             $this->Process($energy, $fuel, $stats, $odo, $doors);
 
@@ -550,7 +561,7 @@ class Volvo extends IPSModule
             return [];
         }
         if ($code === 403) {
-            throw new Exception('Kein Zugriff (HTTP 403) auf ' . $path . ' – API-Key und freigeschaltete Rechte (Scopes) der Volvo-Anwendung prüfen.');
+            throw new VolvoForbiddenException('Kein Zugriff (HTTP 403) auf ' . $path . ' – API-Key und freigeschaltete Rechte (Scopes) der Volvo-Anwendung prüfen.');
         }
         if ($code === 429) {
             throw new Exception('Volvo API-Limit erreicht (HTTP 429). Abrufintervall erhöhen.');
@@ -561,6 +572,17 @@ class Volvo extends IPSModule
 
         $json = json_decode($raw, true);
         return is_array($json) ? $json : [];
+    }
+
+    /** Abruf, der bei fehlendem Recht (403) ein leeres Ergebnis liefert. */
+    private function Optional(callable $call): array
+    {
+        try {
+            return $call();
+        } catch (VolvoForbiddenException $e) {
+            $this->SendDebug('Übersprungen', $e->getMessage(), 0);
+            return [];
+        }
     }
 
     /** Wie Api(), liefert aber direkt den Inhalt von "data". */
@@ -777,5 +799,9 @@ class Volvo extends IPSModule
 }
 
 class VolvoLoginException extends Exception
+{
+}
+
+class VolvoForbiddenException extends Exception
 {
 }
