@@ -21,6 +21,8 @@ class Volvo extends IPSModule
     private const API = 'https://api.volvocars.com';
     private const CONNECTED = '/connected-vehicle/v2/vehicles';
     private const ENERGY = '/energy/v2/vehicles';
+    private const LOCATION = '/location/v1/vehicles';
+    private const LOCATION_CONTROL_GUID = '{45E97A63-F870-408A-B259-2933F7EABF74}';
 
     private const WEBHOOK_GUID = '{015A6EB8-D6E5-4B93-B496-0D3F77AE9FE1}';
     private const CONNECT_GUID = '{9486D575-BE8C-4ED8-B5B5-20930E26DE6F}';
@@ -36,6 +38,8 @@ class Volvo extends IPSModule
         'conve:odometer_status',
         'conve:trip_statistics',
         'conve:lock_status',
+        'conve:doors_status',
+        'conve:windows_status',
         'energy:state:read',
         'energy:capability:read'
     ];
@@ -57,6 +61,8 @@ class Volvo extends IPSModule
         $this->RegisterPropertyInteger('UpdateInterval', 5);
         $this->RegisterPropertyInteger('NotifyInstance', 0);
         $this->RegisterPropertyString('Scopes', implode(' ', self::SCOPES));
+        $this->RegisterPropertyBoolean('EnableLocation', false);
+        $this->RegisterPropertyInteger('HomeRadius', 150);
 
         $this->RegisterAttributeString('AccessToken', '');
         $this->RegisterAttributeString('RefreshToken', '');
@@ -376,8 +382,12 @@ class Volvo extends IPSModule
             $stats = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/statistics'));
             $odo = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/odometer'));
             $doors = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/doors'));
+            $windows = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/windows'));
+            if ($this->ReadPropertyBoolean('EnableLocation')) {
+                $this->ProcessLocation($this->Optional(fn () => $this->ApiData(self::LOCATION . '/' . $vin . '/location')));
+            }
 
-            $this->Process($energy, $fuel, $stats, $odo, $doors);
+            $this->Process($energy, $fuel, $stats, $odo, $doors, $windows);
 
             $this->SetValue('LastError', '');
             $this->SetValue('LastUpdate', time());
@@ -474,7 +484,7 @@ class Volvo extends IPSModule
         }
     }
 
-    private function Process(array $energy, array $fuel, array $stats, array $odo, array $doors): void
+    private function Process(array $energy, array $fuel, array $stats, array $odo, array $doors, array $windows = []): void
     {
         // Akkustand: Energy API, sonst Tank-Endpunkt (ältere Plug-in-Hybride)
         $soc = self::EnergyValue($energy, 'batteryChargeLevel') ?? self::Value($fuel, 'batteryChargeLevel');
@@ -538,7 +548,35 @@ class Volvo extends IPSModule
 
         $lock = self::Value($doors, 'centralLock');
         if ($lock !== null) {
+            $this->MaintainOptional('Locked', 'Verriegelt', VARIABLETYPE_BOOLEAN, '~Lock', 23);
             $this->SetValue('Locked', $lock === 'LOCKED');
+        }
+
+        // Türen/Klappen und Fenster: geschlossen ja/nein plus Liste, was offen ist
+        $open = [];
+        $doorsKnown = $this->CollectOpen($doors, [
+            'frontLeftDoor' => 'Tür vorne links', 'frontRightDoor' => 'Tür vorne rechts',
+            'rearLeftDoor' => 'Tür hinten links', 'rearRightDoor' => 'Tür hinten rechts',
+            'tailgate' => 'Heckklappe', 'hood' => 'Motorhaube', 'tankLid' => 'Tankdeckel'
+        ], $open);
+        $doorsOpen = count($open);
+        $windowsKnown = $this->CollectOpen($windows, [
+            'frontLeftWindow' => 'Fenster vorne links', 'frontRightWindow' => 'Fenster vorne rechts',
+            'rearLeftWindow' => 'Fenster hinten links', 'rearRightWindow' => 'Fenster hinten rechts',
+            'sunroof' => 'Schiebedach'
+        ], $open);
+
+        if ($doorsKnown) {
+            $this->MaintainOptional('DoorsClosed', 'Türen und Klappen', VARIABLETYPE_BOOLEAN, 'VOLVO.Closed', 24);
+            $this->SetValue('DoorsClosed', $doorsOpen === 0);
+        }
+        if ($windowsKnown) {
+            $this->MaintainOptional('WindowsClosed', 'Fenster', VARIABLETYPE_BOOLEAN, 'VOLVO.Closed', 25);
+            $this->SetValue('WindowsClosed', count($open) === $doorsOpen);
+        }
+        if ($doorsKnown || $windowsKnown) {
+            $this->MaintainOptional('OpenParts', 'Geöffnet', VARIABLETYPE_STRING, '', 26);
+            $this->SetValue('OpenParts', count($open) > 0 ? implode(', ', $open) : 'Alles geschlossen');
         }
     }
 
@@ -718,6 +756,78 @@ class Volvo extends IPSModule
         return $field['value'];
     }
 
+    /** Standort (GeoJSON-Punkt: Länge, Breite) auswerten. */
+    private function ProcessLocation(array $loc): void
+    {
+        $coords = $loc['geometry']['coordinates'] ?? null;
+        if (!is_array($coords) || count($coords) < 2) {
+            return;
+        }
+        $lon = (float) $coords[0];
+        $lat = (float) $coords[1];
+
+        $this->MaintainOptional('Latitude', 'Breitengrad', VARIABLETYPE_FLOAT, 'VOLVO.Coordinate', 50);
+        $this->MaintainOptional('Longitude', 'Längengrad', VARIABLETYPE_FLOAT, 'VOLVO.Coordinate', 51);
+        $this->MaintainOptional('MapLink', 'Standort auf Karte', VARIABLETYPE_STRING, '', 54);
+        $this->SetValue('Latitude', $lat);
+        $this->SetValue('Longitude', $lon);
+        $this->SetValue('MapLink', sprintf('https://www.openstreetmap.org/?mlat=%.6F&mlon=%.6F#map=17/%.6F/%.6F', $lat, $lon, $lat, $lon));
+
+        // Entfernung zum Zuhause aus der Symcon-Ortsangabe (Location Control)
+        $home = $this->HomePosition();
+        if ($home === null) {
+            return;
+        }
+        $meters = self::Distance($lat, $lon, $home[0], $home[1]);
+        $this->MaintainOptional('DistanceHome', 'Entfernung von zu Hause', VARIABLETYPE_FLOAT, 'VOLVO.KmDistance', 52);
+        $this->MaintainOptional('AtHome', 'Zu Hause', VARIABLETYPE_BOOLEAN, '~Presence', 53);
+        $this->SetValue('DistanceHome', round($meters / 1000, 1));
+        $this->SetValue('AtHome', $meters <= max(20, $this->ReadPropertyInteger('HomeRadius')));
+    }
+
+    /** @return array{0:float,1:float}|null Breite/Länge aus der Instanz "Location Control" */
+    private function HomePosition(): ?array
+    {
+        $ids = IPS_GetInstanceListByModuleID(self::LOCATION_CONTROL_GUID);
+        if (count($ids) === 0) {
+            return null;
+        }
+        $location = json_decode((string) @IPS_GetProperty($ids[0], 'Location'), true);
+        if (!is_array($location) || !isset($location['latitude'], $location['longitude'])) {
+            return null;
+        }
+        if ((float) $location['latitude'] == 0.0 && (float) $location['longitude'] == 0.0) {
+            return null;
+        }
+        return [(float) $location['latitude'], (float) $location['longitude']];
+    }
+
+    private static function Distance(float $lat1, float $lon1, float $lat2, float $lon2): float
+    {
+        $r = 6371000;
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLon = deg2rad($lon2 - $lon1);
+        $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon / 2) ** 2;
+        return 2 * $r * asin(min(1, sqrt($a)));
+    }
+
+    /** Sammelt offene Teile ein; liefert false, wenn keine Daten vorliegen. */
+    private function CollectOpen(array $data, array $names, array &$open): bool
+    {
+        $known = false;
+        foreach ($names as $key => $name) {
+            $value = self::Value($data, $key);
+            if ($value === null || $value === 'UNSPECIFIED') {
+                continue;
+            }
+            $known = true;
+            if ($value === 'OPEN' || $value === 'AJAR') {
+                $open[] = $name . ($value === 'AJAR' ? ' (angelehnt)' : '');
+            }
+        }
+        return $known;
+    }
+
     private static function ChargingStatusCode(string $status): int
     {
         return [
@@ -772,6 +882,13 @@ class Volvo extends IPSModule
         $this->Profile('VOLVO.Liter', VARIABLETYPE_FLOAT, ' l', 'Drops', 0, 0);
         $this->Profile('VOLVO.kWh', VARIABLETYPE_FLOAT, ' kWh', 'Electricity', 0, 0);
 
+        $this->Profile('VOLVO.KmDistance', VARIABLETYPE_FLOAT, ' km', 'Distance', 0, 0);
+        $this->Profile('VOLVO.Coordinate', VARIABLETYPE_FLOAT, '°', 'Distance', 0, 0);
+        IPS_SetVariableProfileDigits('VOLVO.Coordinate', 6);
+        $this->Profile('VOLVO.Closed', VARIABLETYPE_BOOLEAN, '', 'Window', 0, 0);
+        IPS_SetVariableProfileAssociation('VOLVO.Closed', false, 'Offen', '', 0xE74C3C);
+        IPS_SetVariableProfileAssociation('VOLVO.Closed', true, 'Geschlossen', '', 0x2ECC71);
+
         $this->Profile('VOLVO.ChargingStatus', VARIABLETYPE_INTEGER, '', 'Electricity', 0, 0);
         foreach ([
             [0, 'Unbekannt', 0x7F8C8D], [1, 'Bereit', 0x95A5A6], [2, 'Lädt', 0x2ECC71], [3, 'Fertig geladen', 0x3498DB],
@@ -801,7 +918,6 @@ class Volvo extends IPSModule
         $this->RegisterVariableInteger('ChargingStatus', 'Ladestatus', 'VOLVO.ChargingStatus', 3);
         $this->RegisterVariableBoolean('CableConnected', 'Ladekabel angeschlossen', '~Switch', 4);
         $this->RegisterVariableInteger('Odometer', 'Kilometerstand', 'VOLVO.Km', 22);
-        $this->RegisterVariableBoolean('Locked', 'Verriegelt', '~Lock', 23);
         $this->RegisterVariableString('Model', 'Fahrzeug', '', 30);
         $this->RegisterVariableFloat('BatteryCapacity', 'Akkugröße', 'VOLVO.kWh', 31);
         $this->RegisterVariableInteger('LastUpdate', 'Letzte Aktualisierung', '~UnixTimestamp', 40);

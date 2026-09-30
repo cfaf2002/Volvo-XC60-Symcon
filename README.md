@@ -10,7 +10,8 @@ Gedacht vor allem für Plug-in-Hybride und Elektroautos, z. B. um den Akkustand 
 - Elektrische Reichweite, Ladestatus, Ladekabel angeschlossen
 - Restladezeit und Ziel-Akkustand (sofern das Fahrzeug sie liefert)
 - Tankinhalt und Reichweite Tank (Plug-in-Hybride/Verbrenner)
-- Kilometerstand, Zentralverriegelung
+- Optional **Standort**: Koordinaten, Kartenlink, Entfernung von zu Hause und „Zu Hause“ ja/nein
+- Kilometerstand, Zentralverriegelung, Türen/Klappen und Fenster offen oder geschlossen
 - Modell, Baujahr, Akkugröße und das **offizielle Fahrzeugbild** (PNG mit transparentem Hintergrund)
 - Offizielle Anmeldung per OAuth2 mit **eigenen** Zugangsdaten, Token werden automatisch erneuert
 - Push-Benachrichtigung, wenn die Anmeldung erneuert werden muss
@@ -35,7 +36,7 @@ Werte, die dein Fahrzeug nicht liefert, werden nicht angelegt bzw. bleiben leer.
      (mit Symcon Connect z. B. `https://xxxx.ipmagic.de/hook/volvo`).
    - Diese **Rechte (Scopes)** auswählen:
      `openid`, `conve:vehicle_relation`, `conve:battery_charge_level`, `conve:fuel_status`, `conve:odometer_status`,
-     `conve:trip_statistics`, `conve:lock_status`, `energy:state:read`, `energy:capability:read`
+     `conve:trip_statistics`, `conve:lock_status`, `conve:doors_status`, `conve:windows_status`, `energy:state:read`, `energy:capability:read`
 4. **Client-ID** und **Client-Secret** notieren.
 
 Die Bezeichnungen im Portal können sich ändern – entscheidend sind API Key, Client-ID, Client-Secret, Redirect URI und die Scopes.
@@ -66,6 +67,8 @@ Danach mit **„Fahrzeuge anzeigen“** prüfen, ob dein Fahrzeug gefunden wird.
 | Angefragte Rechte (Scopes) | Muss zu den in der Volvo-Anwendung angehakten Rechten passen (siehe Fehlersuche) |
 | Fahrgestellnummer | Leer = erstes Fahrzeug im Konto |
 | Abrufintervall | Standard 5 Minuten (Volvo erlaubt 10.000 Abfragen pro Tag; ein Abruf braucht ca. 5) |
+| Standort abrufen | Schalter; braucht das Recht `location:read` (auch im Feld „Angefragte Rechte“ ergänzen) |
+| „Zu Hause“ im Umkreis von | Radius um den Standort aus Symcons Location Control (Standard 150 m) |
 | Visualisierung für Push | Meldung, wenn die Anmeldung erneuert werden muss |
 
 ## Variablen
@@ -80,7 +83,13 @@ Danach mit **„Fahrzeuge anzeigen“** prüfen, ob dein Fahrzeug gefunden wird.
 | Ziel-Akkustand (Fahrzeug) | im Auto eingestelltes Ladeziel (nur wenn geliefert) |
 | Tankinhalt, Reichweite Tank | nur bei Fahrzeugen mit Tank |
 | Kilometerstand | |
-| Verriegelt | Zentralverriegelung |
+| Verriegelt | Zentralverriegelung (nur mit den Rechten conve:lock_status **und** conve:doors_status) |
+| Türen und Klappen | Geschlossen/Offen (Türen, Heckklappe, Motorhaube, Tankdeckel; Recht conve:doors_status) |
+| Fenster | Geschlossen/Offen (inkl. Schiebedach; Recht conve:windows_status) |
+| Geöffnet | Was gerade offen ist, z. B. „Fenster hinten links, Heckklappe“ |
+| Breitengrad, Längengrad | Standort (nur mit Schalter „Standort abrufen“) |
+| Standort auf Karte | Link zu OpenStreetMap |
+| Entfernung von zu Hause, Zu Hause | aus dem Symcon-Standort (Location Control) berechnet |
 | Fahrzeug, Akkugröße | Modell/Baujahr und nutzbare Akkugröße laut Volvo |
 | Letzte Aktualisierung, Letzter Fehler | |
 
@@ -91,7 +100,7 @@ geparkt ist, kann ein Wert einige Minuten alt sein.
 
 1. In der Easee-Instanz unter **„Akkustand Fahrzeug“** den Schalter aktivieren und die Variable **„Akkustand“** dieser
    Volvo-Instanz auswählen.
-2. Als nutzbare Akkugröße den Wert der Variable **„Akkugröße“** übernehmen.
+2. Als nutzbare Akkugröße etwa 80 % der Variable **„Akkugröße“** eintragen – Volvo meldet die Brutto-Größe (z. B. XC60 T6/T8 2023: 18,8 kWh brutto, ca. 15 kWh nutzbar).
 3. Fahrzeugbild: hier **„Fahrzeugbild öffnen“** klicken, das Bild speichern und in der Easee-Instanz unter
    „Kachel → Bild des Fahrzeugs“ auswählen.
 
@@ -129,6 +138,10 @@ Armin Frohwerk
 
 ## Versionen
 
+- **1.8** – Optionaler Standort mit Kartenlink, Entfernung von zu Hause und „Zu Hause“
+- **1.7** – Türen/Klappen und Fenster: geschlossen ja/nein und Liste, was offen ist
+- **1.6** – Recht conve:doors_status in der Standardliste ergänzt (für „Verriegelt“ nötig)
+- **1.5** – „Verriegelt“ wird erst angelegt, wenn Volvo den Wert liefert (Recht conve:lock_status)
 - **1.4** – Klare Meldung bei ungültigem VCC API Key, Leerzeichen in den Zugangsdaten werden ignoriert
 - **1.3** – Funktioniert auch ohne das Recht conve:vehicle_relation (dann Fahrgestellnummer eintragen)
 - **1.2** – Angefragte Rechte (Scopes) einstellbar, fehlende Rechte führen nicht mehr zum Fehler
