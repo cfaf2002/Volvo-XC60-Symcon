@@ -55,6 +55,7 @@ trait VolvoTile
             'atHome'      => $get('AtHome'),
             'distance'    => $get('DistanceHome'),
             'mapLink'     => $get('MapLink'),
+            'address'     => $this->TileAddress(),
             'image'       => $image !== '' ? preg_replace('/([?&]w=)\d+/', '${1}800', $image) : '',
             'ok'          => $this->GetStatus() === 102,
             'error'       => (string) $get('LastError'),
@@ -69,6 +70,16 @@ trait VolvoTile
         }
 
         return $data;
+    }
+
+    /** @return array{name:string,street:string,city:string}|null */
+    private function TileAddress(): ?array
+    {
+        $a = json_decode($this->GetAddressData(), true);
+        if (!is_array($a) || (($a['street'] ?? '') === '' && ($a['name'] ?? '') === '')) {
+            return null;
+        }
+        return ['name' => (string) ($a['name'] ?? ''), 'street' => (string) ($a['street'] ?? ''), 'city' => (string) ($a['city'] ?? '')];
     }
 
     /** Bild aus einer Eigenschaft (SelectFile, base64) als data-URL. */

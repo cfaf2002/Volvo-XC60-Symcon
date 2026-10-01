@@ -310,8 +310,28 @@
         const hasLoc = !!s.mapLink;
         $('rowLocation').classList.toggle('hide', !hasLoc);
         if (hasLoc) {
-            let text = s.atHome ? 'Zu Hause' : (s.distance !== null && s.distance !== undefined ? fmt(s.distance, 1) + ' km entfernt' : 'Karte');
-            $('location').innerHTML = '<a href="' + s.mapLink + '" target="_blank" rel="noopener">' + text + '</a>';
+            const a = s.address;
+            let text, small = '', title = '';
+            if (a) {
+                // Adresse statt Entfernung: „REWE · Hauptstraße 5“, klein „Osnabrück“ bzw. „Zu Hause“
+                text = [a.name, a.street].filter(Boolean).join(' · ');
+                small = s.atHome ? 'Zu Hause' : a.city;
+                title = [a.name, a.street, a.city].filter(Boolean).join(', ');
+            } else {
+                text = s.atHome ? 'Zu Hause' : (s.distance !== null && s.distance !== undefined ? fmt(s.distance, 1) + ' km entfernt' : 'Karte');
+            }
+            const link = document.createElement('a');
+            link.href = s.mapLink; link.target = '_blank'; link.rel = 'noopener';
+            link.textContent = text;
+            link.title = title ? title + ' – auf Karte öffnen' : 'Auf Karte öffnen';
+            const loc = $('location');
+            loc.textContent = '';
+            loc.appendChild(link);
+            if (small) {
+                const sm = document.createElement('small');
+                sm.textContent = small;
+                loc.appendChild(sm);
+            }
         }
 
         $('odo').textContent = (s.odometer !== null && s.odometer !== undefined) ? fmt(s.odometer) + ' km' : '–';

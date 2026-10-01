@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../libs/VolvoGeocoder.php';
+
 /**
  * Volvo Karte
  *
@@ -13,10 +15,11 @@ declare(strict_types=1);
  */
 class VolvoKarte extends IPSModule
 {
+    use VolvoGeocoder;
+
     private const LOCATION_CONTROL_GUID = '{45E97A63-F870-408A-B259-2933F7EABF74}';
     private const MIN_MOVE_METERS = 30;     // kleinere Sprünge sind GPS-Rauschen
     private const MAX_POINTS = 5000;
-    private const GEOCODE_URL = 'https://nominatim.openstreetmap.org/reverse';
     private const GEOCODE_RETRY = 300;      // nach Fehler frühestens nach 5 Minuten erneut
     private const MARKER_MAX_PX = 256;      // hochgeladene Bilder werden auf diese Größe verkleinert
 
@@ -105,7 +108,7 @@ class VolvoKarte extends IPSModule
 
         if ($pos !== null) {
             $last = json_decode($this->ReadAttributeString('LastPos'), true);
-            $moved = !is_array($last) || self::Distance($last['lat'], $last['lon'], $pos['lat'], $pos['lon']) >= self::MIN_MOVE_METERS;
+            $moved = !is_array($last) || self::GeoDistance($last['lat'], $last['lon'], $pos['lat'], $pos['lon']) >= self::MIN_MOVE_METERS;
 
             if ($moved) {
                 $this->WriteAttributeString('LastPos', json_encode($pos));
@@ -131,11 +134,7 @@ class VolvoKarte extends IPSModule
     /** Aktuelle Adresse als Text, z. B. „Hauptstraße 5, 49074 Osnabrück“. */
     public function GetAddress(): string
     {
-        $a = json_decode($this->ReadAttributeString('Address'), true);
-        if (!is_array($a)) {
-            return '';
-        }
-        return implode(', ', array_filter([$a['name'] ?? '', $a['street'] ?? '', $a['city'] ?? '']));
+        return self::GeocodeText(json_decode($this->ReadAttributeString('Address'), true));
     }
 
     /** Verlauf als JSON: [[Zeitstempel, Breite, Länge], ...] */
@@ -216,6 +215,16 @@ class VolvoKarte extends IPSModule
     private function UpdateAddress(array $pos): void
     {
         $cached = json_decode($this->ReadAttributeString('Address'), true);
+
+        // Ermittelt die Volvo-Instanz die Adresse schon selbst, wird sie übernommen (keine doppelte Abfrage)
+        $fromVolvo = $this->VolvoAddress($pos);
+        if ($fromVolvo !== null) {
+            if ($fromVolvo !== $cached) {
+                $this->StoreAddress($fromVolvo);
+            }
+            return;
+        }
+
         if (is_array($cached)) {
             return;                                     // für diesen Ort schon bekannt
         }
@@ -223,82 +232,40 @@ class VolvoKarte extends IPSModule
             return;
         }
 
-        $url = self::GEOCODE_URL . '?' . http_build_query([
-            'format'          => 'jsonv2',
-            'lat'             => sprintf('%.6F', $pos['lat']),
-            'lon'             => sprintf('%.6F', $pos['lon']),
-            'zoom'            => 18,
-            'addressdetails'  => 1,
-            'accept-language' => 'de'
-        ]);
-        $data = $this->HttpGetJson($url);
-
-        if (!is_array($data) || !isset($data['address']) || !is_array($data['address'])) {
+        $address = $this->GeocodeLookup($pos['lat'], $pos['lon']);
+        if ($address === null) {
             $this->WriteAttributeInteger('GeocodeFailed', time());
             $this->SendDebug('Adresse', 'Keine Antwort von OpenStreetMap', 0);
             return;
         }
+        $this->StoreAddress($address);
+    }
 
-        $address = self::FormatAddress($data);
+    private function StoreAddress(array $address): void
+    {
         $this->WriteAttributeString('Address', json_encode($address));
         $this->WriteAttributeInteger('GeocodeFailed', 0);
-
         $id = @$this->GetIDForIdent('Address');
         if ($id) {
             SetValueString($id, $this->GetAddress());
         }
     }
 
-    /** Antwort von Nominatim -> {name, street, city} */
-    private static function FormatAddress(array $data): array
+    /** Adresse aus der Volvo-Instanz, wenn sie zur aktuellen Position passt. */
+    private function VolvoAddress(array $pos): ?array
     {
-        $a = $data['address'];
-
-        $street = trim(($a['road'] ?? $a['pedestrian'] ?? $a['footway'] ?? $a['path'] ?? $a['square'] ?? '') . ' ' . ($a['house_number'] ?? ''));
-        $place = $a['city'] ?? $a['town'] ?? $a['village'] ?? $a['municipality'] ?? $a['hamlet'] ?? $a['county'] ?? '';
-        $district = $a['suburb'] ?? $a['city_district'] ?? $a['quarter'] ?? '';
-        $city = trim(($a['postcode'] ?? '') . ' ' . $place);
-        if ($district !== '' && $district !== $place) {
-            $city .= ($city !== '' ? '-' : '') . $district;
-        }
-
-        // Name eines Ortes (Supermarkt, Parkhaus …), aber keine Straßennamen doppelt
-        $name = trim((string) ($data['name'] ?? ''));
-        if ($name === '' || $name === ($a['road'] ?? '') || $name === ($a['house_number'] ?? '') || $name === $place) {
-            $name = '';
-        }
-
-        if ($street === '' && $name === '') {
-            $street = $district !== '' ? $district : (string) ($data['display_name'] ?? '');
-        }
-
-        return ['name' => $name, 'street' => $street, 'city' => $city];
-    }
-
-    /** Für Tests überschreibbar */
-    protected function HttpGetJson(string $url): ?array
-    {
-        if (!function_exists('curl_init')) {
+        $volvo = $this->ReadPropertyInteger('VolvoInstance');
+        if ($volvo <= 0 || !@IPS_InstanceExists($volvo) || !function_exists('VOLVO_GetAddressData')) {
             return null;
         }
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 10,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_FOLLOWLOCATION => true,
-            // Nominatim verlangt eine aussagekräftige Kennung
-            CURLOPT_USERAGENT      => 'IP-Symcon VolvoKarte (github.com/cfaf2002/Volvo-XC60-Symcon)',
-            CURLOPT_HTTPHEADER     => ['Accept: application/json']
-        ]);
-        $raw = curl_exec($ch);
-        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        if ($raw === false || $code !== 200) {
+        $a = json_decode((string) @VOLVO_GetAddressData($volvo), true);
+        if (!is_array($a) || !isset($a['lat'], $a['lon'])) {
             return null;
         }
-        $json = json_decode((string) $raw, true);
-        return is_array($json) ? $json : null;
+        if (self::GeoDistance((float) $a['lat'], (float) $a['lon'], $pos['lat'], $pos['lon']) > self::MIN_MOVE_METERS * 2) {
+            return null;
+        }
+        return ['name' => (string) ($a['name'] ?? ''), 'street' => (string) ($a['street'] ?? ''), 'city' => (string) ($a['city'] ?? '')];
     }
 
     // =================================================================
@@ -471,13 +438,5 @@ class VolvoKarte extends IPSModule
         $history = array_values(array_filter($history, fn ($p) => $p[0] >= $from));
         $history = array_slice($history, -self::MAX_POINTS);
         $this->WriteAttributeString('History', json_encode($history));
-    }
-
-    private static function Distance(float $lat1, float $lon1, float $lat2, float $lon2): float
-    {
-        $dLat = deg2rad($lat2 - $lat1);
-        $dLon = deg2rad($lon2 - $lon1);
-        $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon / 2) ** 2;
-        return 2 * 6371000 * asin(min(1, sqrt($a)));
     }
 }

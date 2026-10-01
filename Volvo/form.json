@@ -82,8 +82,36 @@
                     "maximum": 5000
                 },
                 {
+                    "type": "CheckBox",
+                    "name": "ShowAddress",
+                    "caption": "Adresse ermitteln (Straße und Ort über OpenStreetMap)"
+                },
+                {
+                    "type": "Select",
+                    "name": "MapService",
+                    "caption": "Standort-Link öffnet",
+                    "options": [
+                        {
+                            "caption": "OpenStreetMap",
+                            "value": 0
+                        },
+                        {
+                            "caption": "Google Maps",
+                            "value": 1
+                        },
+                        {
+                            "caption": "Apple Karten",
+                            "value": 2
+                        }
+                    ]
+                },
+                {
                     "type": "Label",
                     "caption": "„Zu Hause“ und die Entfernung werden aus dem Standort berechnet, der in Symcon unter Kern-Instanzen → Location Control hinterlegt ist."
+                },
+                {
+                    "type": "Label",
+                    "caption": "Die Adresse wird nur nachgeschlagen, wenn sich das Auto mehr als 30 m bewegt hat; dazu geht die Position an nominatim.openstreetmap.org. In der Kachel steht sie statt der Entfernung, ein Tipp darauf öffnet den Standort im gewählten Kartendienst (auf dem Handy in der Karten-App)."
                 }
             ]
         },

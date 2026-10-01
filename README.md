@@ -15,7 +15,8 @@ Die Bibliothek enthält zwei Instanz-Typen:
 - Elektrische Reichweite, Ladestatus, Ladekabel angeschlossen
 - Restladezeit und Ziel-Akkustand (sofern das Fahrzeug sie liefert)
 - Tankinhalt und Reichweite Tank (Plug-in-Hybride/Verbrenner)
-- Optional **Standort**: Koordinaten, Kartenlink, Entfernung von zu Hause und „Zu Hause“ ja/nein
+- Optional **Standort**: Koordinaten, **Adresse** (Straße, Ort), Kartenlink (OpenStreetMap, Google Maps oder Apple Karten),
+  Entfernung von zu Hause und „Zu Hause“ ja/nein
 - Kilometerstand, Zentralverriegelung, Türen/Klappen und Fenster offen oder geschlossen
 - Modell, Baujahr, Akkugröße und das **offizielle Fahrzeugbild** (PNG mit transparentem Hintergrund)
 - Offizielle Anmeldung per OAuth2 mit **eigenen** Zugangsdaten, Token werden automatisch erneuert
@@ -94,7 +95,8 @@ Danach mit **„Fahrzeuge anzeigen“** prüfen, ob dein Fahrzeug gefunden wird.
 | Fenster | Geschlossen/Offen (inkl. Schiebedach; Recht conve:windows_status) |
 | Geöffnet | Was gerade offen ist, z. B. „Fenster hinten links, Heckklappe“ |
 | Breitengrad, Längengrad | Standort (nur mit Schalter „Standort abrufen“) |
-| Standort auf Karte | Link zu OpenStreetMap |
+| Adresse | Straße, Hausnummer, PLZ und Ort (Schalter „Adresse ermitteln“) |
+| Standort auf Karte | Link zum gewählten Kartendienst |
 | Entfernung von zu Hause, Zu Hause | aus dem Symcon-Standort (Location Control) berechnet |
 | Fahrzeug, Akkugröße | Modell/Baujahr und nutzbare Akkugröße laut Volvo |
 | Letzte Aktualisierung, Letzter Fehler | |
@@ -110,7 +112,7 @@ Die Instanz bringt eine eigene Kachel mit – einfach in der Kachel-Visualisieru
   eingestellt – einer Markierung für das Ladeziel. Beim Laden pulsiert der Ring.
 - **Offizielles Fahrzeugbild** von Volvo (braucht das Recht `conve:vehicle_relation`).
 - **Chips** für Verriegelung, Türen, Fenster und „Zu Hause“ – grün, wenn alles in Ordnung ist, orange, wenn etwas offen ist.
-- **Werteliste:** Laden (mit Restzeit), Reichweite elektrisch und Tank, was geöffnet ist, Standort (mit Link zur Karte), Kilometerstand.
+- **Werteliste:** Laden (mit Restzeit), Reichweite elektrisch und Tank, was geöffnet ist, Standort als Adresse (Tipp darauf öffnet die Karte), Kilometerstand.
 - Auf dem **Handy** passt sich die Kachel der Größe an: klein (1×1) nur Status und Akku-Ring; breit (2×1) Ring links, Laden und
   Reichweite rechts; quadratisch (2×2) zusätzlich Standort und Kilometerstand. Verriegelung, Türen und Fenster als farbige Symbole.
 - Optional ein **Hintergrundbild** unter „Kachel“ in der Instanz.
@@ -162,6 +164,16 @@ Eigene Kachel mit einer **OpenStreetMap-Karte**, die den Standort aus der Volvo-
 
 PHP-Befehle: `VOLVOMAP_Refresh($id)`, `VOLVOMAP_GetAddress($id)`, `VOLVOMAP_GetHistory($id)` (JSON: `[[Zeitstempel, Breite, Länge], …]`), `VOLVOMAP_ClearHistory($id)`
 
+### Adresse und Kartenlink
+
+Im Bereich **„Standort“** der Volvo-Instanz:
+- **„Adresse ermitteln“** (Standard: an): Straße, Hausnummer und Ort werden bei OpenStreetMap (Nominatim) nachgeschlagen –
+  nur wenn sich das Auto mehr als 30 m bewegt hat. Dazu geht die Position an nominatim.openstreetmap.org.
+  Die Kachel zeigt dann unter „Standort“ die **Adresse statt der Entfernung**; ist das Auto daheim, steht klein „Zu Hause“ dahinter.
+- **„Standort-Link öffnet“**: OpenStreetMap, Google Maps oder Apple Karten. Ein Tipp auf die Adresse öffnet den Standort dort –
+  auf dem Handy direkt in der Karten-App.
+- Die Instanz **„Volvo Karte“** übernimmt diese Adresse automatisch, es wird also nicht doppelt nachgefragt.
+
 ## Zusammenspiel mit dem Easee-Wallbox-Modul
 
 1. In der Easee-Instanz unter **„Akkustand Fahrzeug“** den Schalter aktivieren und die Variable **„Akkustand“** dieser
@@ -180,6 +192,7 @@ Volvo begrenzt die Gültigkeit der Freigabe für private Anwendungen. Läuft sie
 
 ```php
 VOLVO_Update(int $InstanzID): bool            // Sofort abrufen
+VOLVO_GetAddressData(int $InstanzID): string  // Adresse als JSON {lat, lon, name, street, city}
 VOLVO_ListVehicles(int $InstanzID): string    // Fahrzeuge im Konto
 VOLVO_GetVehicleImageUrl(int $InstanzID): string
 VOLVO_GetLoginUrl(int $InstanzID): string
@@ -204,6 +217,8 @@ Armin Frohwerk
 
 ## Versionen
 
+- **2.2** – Volvo Fahrzeug: Adresse des Standorts (Variable und Kachel statt Entfernung), Link wahlweise zu OpenStreetMap,
+  Google Maps oder Apple Karten; Volvo Karte nutzt dieselbe Adresse
 - **2.1** – Volvo Karte: Straße, Name und Ort unter der Karte (OpenStreetMap), Variable „Adresse“;
   Fahrzeugsymbol als Volvo-Fahrzeugbild oder eigenes Foto
 - **2.0** – Neuer Instanz-Typ **„Volvo Karte“**: Kartenkachel mit Standort, Zuhause-Kreis und optionalem Verlauf

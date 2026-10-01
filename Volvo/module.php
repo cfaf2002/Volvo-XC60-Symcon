@@ -15,10 +15,12 @@ declare(strict_types=1);
  * Autor: Armin Frohwerk
  */
 require_once __DIR__ . '/VolvoTile.php';
+require_once __DIR__ . '/../libs/VolvoGeocoder.php';
 
 class Volvo extends IPSModule
 {
     use VolvoTile;
+    use VolvoGeocoder;
 
     private const AUTHORIZE_URL = 'https://volvoid.eu.volvocars.com/as/authorization.oauth2';
     private const TOKEN_URL = 'https://volvoid.eu.volvocars.com/as/token.oauth2';
@@ -67,6 +69,8 @@ class Volvo extends IPSModule
         $this->RegisterPropertyString('Scopes', implode(' ', self::SCOPES));
         $this->RegisterPropertyBoolean('EnableLocation', false);
         $this->RegisterPropertyInteger('HomeRadius', 150);
+        $this->RegisterPropertyBoolean('ShowAddress', true);
+        $this->RegisterPropertyInteger('MapService', 0);       // 0 OpenStreetMap, 1 Google Maps, 2 Apple Karten
 
         $this->RegisterAttributeString('AccessToken', '');
         $this->RegisterAttributeString('RefreshToken', '');
@@ -76,6 +80,8 @@ class Volvo extends IPSModule
         $this->RegisterAttributeString('ActiveVin', '');
         $this->RegisterAttributeString('Vehicle', '{}');
         $this->RegisterAttributeInteger('LoginNotified', 0);
+        $this->RegisterAttributeString('Address', '');
+        $this->RegisterAttributeInteger('GeocodeFailed', 0);
 
         $this->RegisterTimer('UpdateTimer', 0, 'VOLVO_Update($_IPS[\'TARGET\']);');
 
@@ -92,6 +98,7 @@ class Volvo extends IPSModule
         $this->RegisterMessage(0, IPS_KERNELSTARTED);
         $this->CreateProfiles();
         $this->CreateVariables();
+        $this->ApplyLocationSettings();
 
         if (IPS_GetKernelRunlevel() !== KR_READY) {
             return;
@@ -434,6 +441,18 @@ class Volvo extends IPSModule
         } catch (Exception $e) {
             return 'Fehler: ' . $e->getMessage();
         }
+    }
+
+    /**
+     * Zuletzt ermittelte Adresse als JSON {lat, lon, name, street, city}, leer wenn ausgeschaltet.
+     * Wird von „Volvo Karte“ genutzt, damit die Adresse nur einmal abgefragt wird.
+     */
+    public function GetAddressData(): string
+    {
+        if (!$this->ReadPropertyBoolean('ShowAddress') || !$this->ReadPropertyBoolean('EnableLocation')) {
+            return '';
+        }
+        return $this->ReadAttributeString('Address');
     }
 
     /** Adresse des offiziellen Fahrzeugbilds (PNG mit transparentem Hintergrund). */
@@ -782,7 +801,11 @@ class Volvo extends IPSModule
         $this->MaintainOptional('MapLink', 'Standort auf Karte', VARIABLETYPE_STRING, '', 54);
         $this->SetValue('Latitude', $lat);
         $this->SetValue('Longitude', $lon);
-        $this->SetValue('MapLink', sprintf('https://www.openstreetmap.org/?mlat=%.6F&mlon=%.6F#map=17/%.6F/%.6F', $lat, $lon, $lat, $lon));
+        $this->SetValue('MapLink', $this->MapUrl($lat, $lon));
+
+        if ($this->ReadPropertyBoolean('ShowAddress')) {
+            $this->UpdateAddress($lat, $lon);
+        }
 
         // Entfernung zum Zuhause aus der Symcon-Ortsangabe (Location Control)
         $home = $this->HomePosition();
@@ -794,6 +817,69 @@ class Volvo extends IPSModule
         $this->MaintainOptional('AtHome', 'Zu Hause', VARIABLETYPE_BOOLEAN, '~Presence', 53);
         $this->SetValue('DistanceHome', round($meters / 1000, 1));
         $this->SetValue('AtHome', $meters <= max(20, $this->ReadPropertyInteger('HomeRadius')));
+    }
+
+    /** Link zum Standort im gewählten Kartendienst (öffnet auf dem Handy die Karten-App). */
+    private function MapUrl(float $lat, float $lon): string
+    {
+        switch ($this->ReadPropertyInteger('MapService')) {
+            case 1:
+                return sprintf('https://www.google.com/maps/search/?api=1&query=%.6F,%.6F', $lat, $lon);
+            case 2:
+                return sprintf('https://maps.apple.com/?ll=%.6F,%.6F&q=%s', $lat, $lon, rawurlencode($this->VehicleLabel()));
+            default:
+                return sprintf('https://www.openstreetmap.org/?mlat=%.6F&mlon=%.6F#map=17/%.6F/%.6F', $lat, $lon, $lat, $lon);
+        }
+    }
+
+    private function VehicleLabel(): string
+    {
+        $id = @$this->GetIDForIdent('Model');
+        $model = $id ? (string) $this->GetValue('Model') : '';
+        return $model !== '' ? $model : 'Volvo';
+    }
+
+    /** Adresse nur neu nachschlagen, wenn sich das Auto mehr als 30 m bewegt hat. */
+    private function UpdateAddress(float $lat, float $lon): void
+    {
+        $cached = json_decode($this->ReadAttributeString('Address'), true);
+        if (is_array($cached) && isset($cached['lat'], $cached['lon'])
+            && self::GeoDistance((float) $cached['lat'], (float) $cached['lon'], $lat, $lon) < 30) {
+            return;
+        }
+        if (time() - $this->ReadAttributeInteger('GeocodeFailed') < 300) {
+            return;                                     // nach einem Fehler 5 Minuten Pause
+        }
+
+        $address = $this->GeocodeLookup($lat, $lon);
+        if ($address === null) {
+            $this->WriteAttributeInteger('GeocodeFailed', time());
+            $this->SendDebug('Adresse', 'Keine Antwort von OpenStreetMap', 0);
+            return;
+        }
+
+        $this->WriteAttributeInteger('GeocodeFailed', 0);
+        $this->WriteAttributeString('Address', json_encode(['lat' => round($lat, 6), 'lon' => round($lon, 6)] + $address));
+        $this->MaintainOptional('Address', 'Adresse', VARIABLETYPE_STRING, '', 55);
+        $this->SetValue('Address', self::GeocodeText($address));
+    }
+
+    /** Schalter für Adresse und Kartendienst übernehmen. */
+    private function ApplyLocationSettings(): void
+    {
+        if (!$this->ReadPropertyBoolean('ShowAddress') || !$this->ReadPropertyBoolean('EnableLocation')) {
+            if (@$this->GetIDForIdent('Address') !== false) {
+                $this->MaintainVariable('Address', 'Adresse', VARIABLETYPE_STRING, '', 55, false);
+            }
+        }
+        // Link sofort auf den gewählten Kartendienst umstellen
+        if (@$this->GetIDForIdent('MapLink') !== false && @$this->GetIDForIdent('Latitude') !== false) {
+            $lat = (float) $this->GetValue('Latitude');
+            $lon = (float) $this->GetValue('Longitude');
+            if ($lat != 0.0 || $lon != 0.0) {
+                $this->SetValue('MapLink', $this->MapUrl($lat, $lon));
+            }
+        }
     }
 
     /** @return array{0:float,1:float}|null Breite/Länge aus der Instanz "Location Control" */
