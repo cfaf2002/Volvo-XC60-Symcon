@@ -49,7 +49,7 @@ Die Bezeichnungen im Portal können sich ändern – entscheidend sind API Key, 
 
 ### 2. Modul installieren
 
-1. **Kern-Instanzen → Modules → Hinzufügen**: `https://github.com/cfaf2002/Volvo-Symcon`
+1. **Kern-Instanzen → Modules → Hinzufügen**: `https://github.com/cfaf2002/Volvo-XC60-Symcon`
 2. **Instanz hinzufügen → „Volvo“**.
 3. API Key, Client-ID und Client-Secret eintragen, **Übernehmen**.
 

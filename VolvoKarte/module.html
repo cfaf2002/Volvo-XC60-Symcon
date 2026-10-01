@@ -1,0 +1,344 @@
+<style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; }
+    body { font-family: 'Poppins', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+
+    .vm { position: relative; height: 100vh; padding-top: 46px; }
+    .vm-map { position: absolute; inset: 46px 0 0; overflow: hidden; background: #2b2d30; border-radius: 0 0 10px 10px;
+              touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+    .vm-map.drag { cursor: grabbing; }
+    .vm-tiles { position: absolute; inset: 0; }
+    .vm-tiles img { position: absolute; width: 256px; height: 256px; pointer-events: none; -webkit-user-drag: none; }
+    .vm.dark .vm-tiles { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.6); }
+    .vm-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+
+    /* Fahrzeug */
+    .vm-car { position: absolute; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: #2e86de;
+              border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(46,134,222,.25), 0 4px 10px rgba(0,0,0,.4);
+              display: none; align-items: center; justify-content: center; pointer-events: none; }
+    .vm-car.on { display: flex; }
+    .vm-car svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    .vm-attr { position: absolute; right: 4px; bottom: 2px; font-size: 9px; color: #ccc; background: rgba(0,0,0,.45);
+               padding: 1px 5px; border-radius: 4px; }
+    .vm-attr a { color: #ddd; }
+
+    /* Infoleiste */
+    .vm-info { position: absolute; left: 10px; right: 10px; bottom: 20px; display: flex; align-items: center; gap: 10px;
+               padding: 8px 12px; border-radius: 12px; background: rgba(20,22,26,.75); color: #fff; font-size: 13px; min-width: 0;
+               -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+    .vm-place { font-weight: 600; white-space: nowrap; }
+    .vm-sub { color: rgba(255,255,255,.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .vm-soc { margin-left: auto; font-weight: 600; white-space: nowrap; }
+
+    /* Knöpfe */
+    .vm-ctrl { position: absolute; top: 56px; right: 10px; display: flex; flex-direction: column; gap: 6px; }
+    .vm-btn { border: 0; border-radius: 9px; min-width: 34px; padding: 7px 10px; font: inherit; font-size: 12px; font-weight: 600;
+              cursor: pointer; background: rgba(20,22,26,.75); color: #fff; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+    .vm-btn.on { background: #2e86de; }
+    .vm-btn.big { font-size: 16px; padding: 4px 0; }
+    .vm-range { display: none; flex-direction: column; gap: 6px; margin-top: 4px; }
+    .vm.track .vm-range { display: flex; }
+
+    .vm-hint { position: absolute; inset: 46px 0 0; display: none; align-items: center; justify-content: center; text-align: center;
+               padding: 20px; color: #ccc; font-size: 13px; background: #2b2d30; border-radius: 0 0 10px 10px; }
+    .vm-hint.on { display: flex; }
+
+    @media (max-width: 460px) {
+        .vm-ctrl { top: 54px; right: 8px; gap: 4px; }
+        .vm-btn { padding: 5px 8px; font-size: 11px; min-width: 30px; }
+        .vm-btn.big { display: none; }          /* Zoomen per Fingergeste */
+        .vm-range { flex-direction: column; gap: 4px; margin-top: 0; }
+    }
+    @media (max-width: 300px), (max-height: 220px) {
+        .vm-ctrl, .vm-sub { display: none; }
+        .vm-info { bottom: 16px; padding: 6px 10px; font-size: 12px; }
+    }
+</style>
+
+<div class="vm" id="root">
+    <div class="vm-map" id="map">
+        <div class="vm-tiles" id="tiles"></div>
+        <svg class="vm-svg" id="svg"></svg>
+        <div class="vm-car" id="car"><svg viewBox="0 0 24 24"><path d="M5 17h14v-4l-2-5H7l-2 5z"/><circle cx="8" cy="17" r="1.6"/><circle cx="16" cy="17" r="1.6"/></svg></div>
+        <div class="vm-attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>
+    </div>
+
+    <div class="vm-ctrl">
+        <button class="vm-btn big" onclick="zoomBy(1)" aria-label="Hineinzoomen">+</button>
+        <button class="vm-btn big" onclick="zoomBy(-1)" aria-label="Herauszoomen">−</button>
+        <button class="vm-btn" onclick="centerCar()">Auto</button>
+        <div class="vm-range">
+            <button class="vm-btn on" data-h="24" onclick="setRange(24)">24 h</button>
+            <button class="vm-btn" data-h="168" onclick="setRange(168)">7 Tage</button>
+            <button class="vm-btn" data-h="0" onclick="setRange(0)">Alles</button>
+        </div>
+    </div>
+
+    <div class="vm-info" id="info">
+        <span class="vm-place" id="place">–</span>
+        <span class="vm-sub" id="sub"></span>
+        <span class="vm-soc" id="soc"></span>
+    </div>
+
+    <div class="vm-hint" id="hint"></div>
+</div>
+
+<script>
+    // ------------------------------------------------------------------
+    // Kleine Kartenanzeige auf Basis der OpenStreetMap-Kacheln (Web-Mercator)
+    // ------------------------------------------------------------------
+    const TILE = 256;
+    const $ = (id) => document.getElementById(id);
+    const fmt = (n, d = 0) => Number(n).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+    let state = null, rangeHours = 24, firstFix = true, userMoved = false;
+    let view = { lat: 51.1, lon: 10.4, z: 6 };
+    const tileCache = new Map();
+
+    function project(lat, lon, z) {
+        const s = TILE * Math.pow(2, z);
+        const sin = Math.sin(lat * Math.PI / 180);
+        return {
+            x: (lon + 180) / 360 * s,
+            y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * s
+        };
+    }
+
+    function unproject(x, y, z) {
+        const s = TILE * Math.pow(2, z);
+        const lon = x / s * 360 - 180;
+        const n = Math.PI - 2 * Math.PI * y / s;
+        return { lat: 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))), lon };
+    }
+
+    function size() {
+        const m = $('map');
+        const info = $('info');
+        // Die Infoleiste unten verdeckt einen Teil der Karte -> Mitte darüber legen
+        const reserved = info && info.offsetParent ? info.offsetHeight + 20 : 0;
+        return { w: m.clientWidth, h: m.clientHeight, cy: (m.clientHeight - reserved) / 2 };
+    }
+
+    /** Bildschirmposition (Pixel in der Karte) zu einer Koordinate */
+    function toScreen(lat, lon) {
+        const c = project(view.lat, view.lon, view.z), p = project(lat, lon, view.z), s = size();
+        return { x: p.x - c.x + s.w / 2, y: p.y - c.y + s.cy };
+    }
+
+    function render() {
+        const s = size();
+        if (s.w === 0 || s.h === 0) return;
+        const c = project(view.lat, view.lon, view.z);
+        const left = c.x - s.w / 2, top = c.y - s.cy;
+        const n = Math.pow(2, view.z);
+        const x0 = Math.floor(left / TILE), x1 = Math.floor((left + s.w) / TILE);
+        const y0 = Math.max(0, Math.floor(top / TILE)), y1 = Math.min(n - 1, Math.floor((top + s.h) / TILE));
+
+        const wanted = new Set();
+        const layer = $('tiles');
+        for (let tx = x0; tx <= x1; tx++) {
+            for (let ty = y0; ty <= y1; ty++) {
+                const wx = ((tx % n) + n) % n;
+                const key = view.z + '/' + wx + '/' + ty + '@' + tx;
+                wanted.add(key);
+                let img = tileCache.get(key);
+                if (!img) {
+                    img = new Image();
+                    img.alt = '';
+                    img.src = 'https://tile.openstreetmap.org/' + view.z + '/' + wx + '/' + ty + '.png';
+                    tileCache.set(key, img);
+                }
+                img.style.left = Math.round(tx * TILE - left) + 'px';
+                img.style.top = Math.round(ty * TILE - top) + 'px';
+                if (img.parentNode !== layer) layer.appendChild(img);
+            }
+        }
+        // Nicht mehr sichtbare Kacheln entfernen
+        for (const [key, img] of tileCache) {
+            if (!wanted.has(key)) {
+                img.remove();
+                if (!key.startsWith(view.z + '/')) tileCache.delete(key);
+            }
+        }
+
+        renderOverlays();
+    }
+
+    function renderOverlays() {
+        const svg = $('svg');
+        let out = '';
+
+        // Zuhause als Kreis (Radius in Metern -> Pixel)
+        if (state && state.home) {
+            const h = toScreen(state.home.lat, state.home.lon);
+            const mpp = 156543.03392 * Math.cos(state.home.lat * Math.PI / 180) / Math.pow(2, view.z);
+            const r = Math.max(4, state.home.r / mpp);
+            out += '<circle cx="' + h.x.toFixed(1) + '" cy="' + h.y.toFixed(1) + '" r="' + r.toFixed(1) +
+                   '" fill="rgba(46,204,113,.14)" stroke="#2ecc71" stroke-width="1.5"/>';
+        }
+
+        // Verlauf
+        const pts = trackPoints();
+        if (pts.length >= 2) {
+            const sp = pts.map(p => toScreen(p[0], p[1]));
+            out += '<polyline points="' + sp.map(p => p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ') +
+                   '" fill="none" stroke="#2e86de" stroke-width="3" stroke-opacity=".85" stroke-dasharray="6 6" stroke-linejoin="round"/>';
+            sp.slice(0, -1).forEach(p => {
+                out += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="3.5" fill="#2e86de" stroke="#fff" stroke-width="1"/>';
+            });
+        }
+        svg.innerHTML = out;
+
+        // Fahrzeug
+        const car = $('car');
+        if (state && state.pos) {
+            const p = toScreen(state.pos.lat, state.pos.lon);
+            car.style.left = p.x + 'px';
+            car.style.top = p.y + 'px';
+            car.classList.add('on');
+        } else {
+            car.classList.remove('on');
+        }
+    }
+
+    function trackPoints() {
+        if (!state || !Array.isArray(state.track)) return [];
+        const from = rangeHours > 0 ? Date.now() / 1000 - rangeHours * 3600 : 0;
+        const pts = state.track.filter(p => p[0] >= from).map(p => [p[1], p[2]]);
+        if (pts.length && state.pos) pts.push([state.pos.lat, state.pos.lon]);
+        return pts;
+    }
+
+    // ------------------------------------------------------------------
+    // Bedienung: Ziehen, Mausrad, Doppelklick, Zwei-Finger-Zoom
+    // ------------------------------------------------------------------
+    (function () {
+        const m = $('map');
+        let drag = null;
+        const pointers = new Map();
+        let pinch = null;
+
+        m.addEventListener('pointerdown', (e) => {
+            m.setPointerCapture(e.pointerId);
+            pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (pointers.size === 1) {
+                drag = { x: e.clientX, y: e.clientY, c: project(view.lat, view.lon, view.z) };
+                m.classList.add('drag');
+            } else if (pointers.size === 2) {
+                const [a, b] = [...pointers.values()];
+                pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: view.z };
+                drag = null;
+            }
+        });
+        m.addEventListener('pointermove', (e) => {
+            if (!pointers.has(e.pointerId)) return;
+            pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (pinch && pointers.size === 2) {
+                const [a, b] = [...pointers.values()];
+                const z = Math.round(pinch.z + Math.log2(Math.hypot(a.x - b.x, a.y - b.y) / pinch.d));
+                if (z !== view.z) setZoom(z);
+                return;
+            }
+            if (!drag) return;
+            const ll = unproject(drag.c.x - (e.clientX - drag.x), drag.c.y - (e.clientY - drag.y), view.z);
+            view.lat = Math.max(-85, Math.min(85, ll.lat));
+            view.lon = ll.lon;
+            userMoved = true;
+            render();
+        });
+        const end = (e) => {
+            pointers.delete(e.pointerId);
+            if (pointers.size < 2) pinch = null;
+            if (pointers.size === 0) { drag = null; m.classList.remove('drag'); }
+        };
+        m.addEventListener('pointerup', end);
+        m.addEventListener('pointercancel', end);
+        m.addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1 : -1); }, { passive: false });
+        m.addEventListener('dblclick', () => zoomBy(1));
+        window.addEventListener('resize', render);
+    })();
+
+    function setZoom(z) {
+        view.z = Math.max(3, Math.min(19, z));
+        render();
+    }
+
+    function zoomBy(step) {
+        userMoved = true;
+        setZoom(view.z + step);
+    }
+
+    function centerCar() {
+        if (!state || !state.pos) return;
+        userMoved = false;
+        view.lat = state.pos.lat; view.lon = state.pos.lon; view.z = state.zoom;
+        render();
+    }
+
+    /** Ansicht so wählen, dass der ganze Verlauf zu sehen ist */
+    function fitTrack() {
+        const pts = trackPoints();
+        if (pts.length < 2) return;
+        const s = size();
+        const lats = pts.map(p => p[0]), lons = pts.map(p => p[1]);
+        const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLon = Math.min(...lons), maxLon = Math.max(...lons);
+        let z = 18;
+        for (; z > 3; z--) {
+            const a = project(maxLat, minLon, z), b = project(minLat, maxLon, z);
+            if (b.x - a.x <= s.w - 80 && b.y - a.y <= s.cy * 2 - 50) break;
+        }
+        view.z = z; view.lat = (minLat + maxLat) / 2; view.lon = (minLon + maxLon) / 2;
+        userMoved = true;
+        render();
+    }
+
+    function setRange(hours) {
+        rangeHours = hours;
+        document.querySelectorAll('.vm-range .vm-btn').forEach(b => b.classList.toggle('on', Number(b.dataset.h) === hours));
+        fitTrack();
+        renderOverlays();
+    }
+
+    // ------------------------------------------------------------------
+    // Daten aus Symcon
+    // ------------------------------------------------------------------
+    function handleMessage(data) {
+        state = JSON.parse(data);
+        const root = $('root');
+        root.classList.toggle('dark', !!state.dark);
+        root.classList.toggle('track', Array.isArray(state.track));
+
+        const hint = $('hint');
+        hint.textContent = state.hint || '';
+        hint.classList.toggle('on', !!state.hint && !state.pos);
+
+        if (state.pos) {
+            if (firstFix) {
+                view = { lat: state.pos.lat, lon: state.pos.lon, z: state.zoom };
+                firstFix = false;
+            } else if (!userMoved) {
+                view.lat = state.pos.lat; view.lon = state.pos.lon;   // mitwandern
+            }
+        }
+        render();
+
+        let place = 'Standort unbekannt';
+        if (state.pos) {
+            place = state.atHome ? 'Zu Hause'
+                : (state.distance !== null && state.distance !== undefined ? fmt(state.distance, 1) + ' km entfernt' : 'Unterwegs');
+        }
+        $('place').textContent = place;
+
+        const sub = [];
+        if (state.parkedSince > 0 && state.pos) {
+            const d = new Date(state.parkedSince * 1000);
+            const today = d.toDateString() === new Date().toDateString();
+            sub.push('steht seit ' + (today ? '' : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ') +
+                     d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
+        }
+        sub.push('Stand ' + state.updated);
+        $('sub').textContent = sub.join(' · ');
+        $('soc').textContent = (state.soc !== null && state.soc !== undefined) ? state.soc + ' %' : '';
+    }
+</script>
