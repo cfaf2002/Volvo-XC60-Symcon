@@ -130,9 +130,23 @@ Eigene Kachel mit einer **OpenStreetMap-Karte**, die den Standort aus der Volvo-
 - Das Fahrzeug als Markierung. Kommt ein neuer Standort, **wandert die Markierung in der offenen Kachel mit** – ohne Neuladen.
   Wer die Karte verschiebt oder zoomt, behält seine Ansicht; **„Auto“** zentriert wieder auf das Fahrzeug.
 - Optional das **Zuhause** als grüner Kreis (Standort aus Kern-Instanzen → Location Control, Radius aus der Volvo-Instanz).
-- Eine Infoleiste: „Zu Hause“ bzw. Entfernung, „steht seit …“, Stand der Daten und Akkustand.
+- Eine Infoleiste unter der Karte: **Straße mit Hausnummer** (bei Geschäften, Parkhäusern usw. auch deren **Name**),
+  darunter **PLZ und Ort**, „Zu Hause“ bzw. Entfernung, „steht seit …“ und der Akkustand.
 - Bedienung: ziehen, Mausrad bzw. zwei Finger zum Zoomen, Doppelklick; **+ / −** auf großen Kacheln.
 - Dunkle oder helle Karte (Schalter in der Instanz).
+
+**Adresse (per Schalter)**
+- **„Straße und Ort unter der Karte anzeigen“** (Standard: an). Die Adresse wird bei OpenStreetMap (Nominatim) nachgeschlagen –
+  nur **einmal je neuem Standort** (Bewegung über 30 m), nicht bei jeder Aktualisierung. Dazu wird die Position an
+  nominatim.openstreetmap.org übertragen.
+- Zusätzlich legt die Instanz die Variable **„Adresse“** an (z. B. für Benachrichtigungen oder das Archiv).
+- Klappt die Abfrage nicht, zeigt die Leiste wie bisher „Zu Hause“ bzw. die Entfernung; neuer Versuch frühestens nach 5 Minuten.
+
+**Fahrzeugsymbol**
+- **Standard-Symbol**, **Fahrzeugbild von Volvo** (freigestellt, steht auf dem Standortpunkt) oder **eigenes Foto / Bild** hochladen.
+- Eigenes Bild wahlweise **rund zugeschnitten** (gut für Fotos) oder **frei stehend** (gut für PNG mit transparentem Hintergrund).
+- Größe einstellbar (28–140 px). Hochgeladene Bilder werden automatisch auf 256 px verkleinert, damit die Kachel schnell bleibt.
+  Auf kleinen Kacheln wird das Symbol automatisch kleiner.
 
 **Verlauf (per Schalter)**
 - **„Verlauf mitschreiben“** in der Instanz aktivieren. Ein neuer Punkt wird nur gespeichert, wenn sich das Auto um mehr als 30 m bewegt hat.
@@ -146,7 +160,7 @@ Eigene Kachel mit einer **OpenStreetMap-Karte**, die den Standort aus der Volvo-
 - Die Kartenbilder kommen von OpenStreetMap – das Gerät, auf dem die Kachel angezeigt wird, braucht Internet. Es wird keine
   fremde Skript-Bibliothek nachgeladen und kein API-Schlüssel benötigt. Der Standort selbst bleibt in deinem Symcon.
 
-PHP-Befehle: `VOLVOMAP_Refresh($id)`, `VOLVOMAP_GetHistory($id)` (JSON: `[[Zeitstempel, Breite, Länge], …]`), `VOLVOMAP_ClearHistory($id)`
+PHP-Befehle: `VOLVOMAP_Refresh($id)`, `VOLVOMAP_GetAddress($id)`, `VOLVOMAP_GetHistory($id)` (JSON: `[[Zeitstempel, Breite, Länge], …]`), `VOLVOMAP_ClearHistory($id)`
 
 ## Zusammenspiel mit dem Easee-Wallbox-Modul
 
@@ -190,6 +204,8 @@ Armin Frohwerk
 
 ## Versionen
 
+- **2.1** – Volvo Karte: Straße, Name und Ort unter der Karte (OpenStreetMap), Variable „Adresse“;
+  Fahrzeugsymbol als Volvo-Fahrzeugbild oder eigenes Foto
 - **2.0** – Neuer Instanz-Typ **„Volvo Karte“**: Kartenkachel mit Standort, Zuhause-Kreis und optionalem Verlauf
 - **1.10** – Kachel für alle Handy-Größen überarbeitet (1×1, 2×1, 2×2)
 - **1.9** – Eigene Kachel für die Kachel-Visualisierung (mit optionalem Hintergrundbild)

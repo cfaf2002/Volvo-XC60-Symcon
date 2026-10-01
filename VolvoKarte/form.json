@@ -39,6 +39,70 @@
         },
         {
             "type": "ExpansionPanel",
+            "caption": "Adresse",
+            "expanded": true,
+            "items": [
+                {
+                    "type": "CheckBox",
+                    "name": "ShowAddress",
+                    "caption": "Straße und Ort unter der Karte anzeigen"
+                },
+                {
+                    "type": "Label",
+                    "caption": "Die Adresse wird bei OpenStreetMap (Nominatim) nachgeschlagen – nur einmal je neuem Standort, wenn sich das Auto mehr als 30 m bewegt hat. Dazu wird die Position an nominatim.openstreetmap.org übertragen. Zusätzlich gibt es die Variable „Adresse“."
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Fahrzeugsymbol",
+            "items": [
+                {
+                    "type": "Select",
+                    "name": "MarkerType",
+                    "caption": "Symbol auf der Karte",
+                    "options": [
+                        {
+                            "caption": "Standard-Symbol",
+                            "value": 0
+                        },
+                        {
+                            "caption": "Fahrzeugbild von Volvo",
+                            "value": 1
+                        },
+                        {
+                            "caption": "Eigenes Foto / Bild",
+                            "value": 2
+                        }
+                    ]
+                },
+                {
+                    "type": "SelectFile",
+                    "name": "MarkerImage",
+                    "caption": "Eigenes Foto / Bild",
+                    "extensions": ".jpg,.jpeg,.png,.webp,.gif"
+                },
+                {
+                    "type": "CheckBox",
+                    "name": "MarkerRound",
+                    "caption": "Eigenes Bild rund zuschneiden (aus = Bild frei stehend, ideal für PNG mit transparentem Hintergrund)"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "MarkerSize",
+                    "caption": "Bildgröße",
+                    "suffix": "px",
+                    "minimum": 28,
+                    "maximum": 140
+                },
+                {
+                    "type": "Label",
+                    "caption": "Das Bild wird beim Übernehmen automatisch auf 256 Pixel verkleinert. Das Volvo-Fahrzeugbild braucht in der Volvo-Instanz das Recht conve:vehicle_relation."
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
             "caption": "Darstellung",
             "items": [
                 {

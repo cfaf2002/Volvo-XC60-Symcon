@@ -16,6 +16,9 @@ class VolvoKarte extends IPSModule
     private const LOCATION_CONTROL_GUID = '{45E97A63-F870-408A-B259-2933F7EABF74}';
     private const MIN_MOVE_METERS = 30;     // kleinere Sprünge sind GPS-Rauschen
     private const MAX_POINTS = 5000;
+    private const GEOCODE_URL = 'https://nominatim.openstreetmap.org/reverse';
+    private const GEOCODE_RETRY = 300;      // nach Fehler frühestens nach 5 Minuten erneut
+    private const MARKER_MAX_PX = 256;      // hochgeladene Bilder werden auf diese Größe verkleinert
 
     public function Create()
     {
@@ -27,11 +30,19 @@ class VolvoKarte extends IPSModule
         $this->RegisterPropertyBoolean('ShowHome', true);
         $this->RegisterPropertyInteger('Zoom', 15);
         $this->RegisterPropertyBoolean('DarkMap', true);
+        $this->RegisterPropertyBoolean('ShowAddress', true);
+        $this->RegisterPropertyInteger('MarkerType', 0);       // 0 Symbol, 1 Volvo-Fahrzeugbild, 2 eigenes Bild
+        $this->RegisterPropertyString('MarkerImage', '');
+        $this->RegisterPropertyBoolean('MarkerRound', true);
+        $this->RegisterPropertyInteger('MarkerSize', 56);
 
         $this->RegisterAttributeString('History', '[]');
         $this->RegisterAttributeInteger('Watched', 0);
         $this->RegisterAttributeString('LastPos', '');
         $this->RegisterAttributeInteger('ParkedSince', 0);
+        $this->RegisterAttributeString('Address', '');
+        $this->RegisterAttributeInteger('GeocodeFailed', 0);
+        $this->RegisterAttributeString('MarkerCache', '');
 
         $this->SetVisualizationType(1);
     }
@@ -41,6 +52,12 @@ class VolvoKarte extends IPSModule
         parent::ApplyChanges();
 
         $this->RegisterMessage(0, IPS_KERNELSTARTED);
+
+        $this->MaintainVariable('Address', 'Adresse', 3, '', 1, $this->ReadPropertyBoolean('ShowAddress'));
+        if ($this->ReadPropertyBoolean('ShowAddress') && ($vid = @$this->GetIDForIdent('Address'))) {
+            SetValueString($vid, $this->GetAddress());
+        }
+        $this->BuildMarkerCache();
 
         if (IPS_GetKernelRunlevel() !== KR_READY) {
             return;
@@ -94,15 +111,31 @@ class VolvoKarte extends IPSModule
                 $this->WriteAttributeString('LastPos', json_encode($pos));
                 $this->WriteAttributeInteger('ParkedSince', time());
 
+                $this->WriteAttributeString('Address', '');     // neuer Ort -> Adresse neu ermitteln
+
                 if ($this->ReadPropertyBoolean('RecordHistory')) {
                     $history = $this->ReadHistory();
                     $history[] = [time(), round($pos['lat'], 6), round($pos['lon'], 6)];
                     $this->WriteHistory($history);
                 }
             }
+
+            if ($this->ReadPropertyBoolean('ShowAddress')) {
+                $this->UpdateAddress($pos);
+            }
         }
 
         $this->PushTile();
+    }
+
+    /** Aktuelle Adresse als Text, z. B. „Hauptstraße 5, 49074 Osnabrück“. */
+    public function GetAddress(): string
+    {
+        $a = json_decode($this->ReadAttributeString('Address'), true);
+        if (!is_array($a)) {
+            return '';
+        }
+        return implode(', ', array_filter([$a['name'] ?? '', $a['street'] ?? '', $a['city'] ?? '']));
     }
 
     /** Verlauf als JSON: [[Zeitstempel, Breite, Länge], ...] */
@@ -159,7 +192,9 @@ class VolvoKarte extends IPSModule
             'distance'    => $value('DistanceHome'),
             'parkedSince' => $this->ReadAttributeInteger('ParkedSince'),
             'updated'     => $lastUpdate > 0 ? date('H:i', $lastUpdate) : '–',
-            'hint'        => $this->Hint($pos)
+            'hint'        => $this->Hint($pos),
+            'address'     => $this->ReadPropertyBoolean('ShowAddress') ? (json_decode($this->ReadAttributeString('Address'), true) ?: null) : null,
+            'marker'      => $this->MarkerData()
         ];
     }
 
@@ -170,6 +205,202 @@ class VolvoKarte extends IPSModule
         }
         if ($pos === null) {
             return 'Noch kein Standort – in der Volvo-Instanz „Standort abrufen“ aktivieren (Recht location:read).';
+        }
+        return '';
+    }
+
+    // =================================================================
+    // Adresse (Rückwärtssuche über OpenStreetMap/Nominatim)
+    // =================================================================
+
+    private function UpdateAddress(array $pos): void
+    {
+        $cached = json_decode($this->ReadAttributeString('Address'), true);
+        if (is_array($cached)) {
+            return;                                     // für diesen Ort schon bekannt
+        }
+        if (time() - $this->ReadAttributeInteger('GeocodeFailed') < self::GEOCODE_RETRY) {
+            return;
+        }
+
+        $url = self::GEOCODE_URL . '?' . http_build_query([
+            'format'          => 'jsonv2',
+            'lat'             => sprintf('%.6F', $pos['lat']),
+            'lon'             => sprintf('%.6F', $pos['lon']),
+            'zoom'            => 18,
+            'addressdetails'  => 1,
+            'accept-language' => 'de'
+        ]);
+        $data = $this->HttpGetJson($url);
+
+        if (!is_array($data) || !isset($data['address']) || !is_array($data['address'])) {
+            $this->WriteAttributeInteger('GeocodeFailed', time());
+            $this->SendDebug('Adresse', 'Keine Antwort von OpenStreetMap', 0);
+            return;
+        }
+
+        $address = self::FormatAddress($data);
+        $this->WriteAttributeString('Address', json_encode($address));
+        $this->WriteAttributeInteger('GeocodeFailed', 0);
+
+        $id = @$this->GetIDForIdent('Address');
+        if ($id) {
+            SetValueString($id, $this->GetAddress());
+        }
+    }
+
+    /** Antwort von Nominatim -> {name, street, city} */
+    private static function FormatAddress(array $data): array
+    {
+        $a = $data['address'];
+
+        $street = trim(($a['road'] ?? $a['pedestrian'] ?? $a['footway'] ?? $a['path'] ?? $a['square'] ?? '') . ' ' . ($a['house_number'] ?? ''));
+        $place = $a['city'] ?? $a['town'] ?? $a['village'] ?? $a['municipality'] ?? $a['hamlet'] ?? $a['county'] ?? '';
+        $district = $a['suburb'] ?? $a['city_district'] ?? $a['quarter'] ?? '';
+        $city = trim(($a['postcode'] ?? '') . ' ' . $place);
+        if ($district !== '' && $district !== $place) {
+            $city .= ($city !== '' ? '-' : '') . $district;
+        }
+
+        // Name eines Ortes (Supermarkt, Parkhaus …), aber keine Straßennamen doppelt
+        $name = trim((string) ($data['name'] ?? ''));
+        if ($name === '' || $name === ($a['road'] ?? '') || $name === ($a['house_number'] ?? '') || $name === $place) {
+            $name = '';
+        }
+
+        if ($street === '' && $name === '') {
+            $street = $district !== '' ? $district : (string) ($data['display_name'] ?? '');
+        }
+
+        return ['name' => $name, 'street' => $street, 'city' => $city];
+    }
+
+    /** Für Tests überschreibbar */
+    protected function HttpGetJson(string $url): ?array
+    {
+        if (!function_exists('curl_init')) {
+            return null;
+        }
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_FOLLOWLOCATION => true,
+            // Nominatim verlangt eine aussagekräftige Kennung
+            CURLOPT_USERAGENT      => 'IP-Symcon VolvoKarte (github.com/cfaf2002/Volvo-XC60-Symcon)',
+            CURLOPT_HTTPHEADER     => ['Accept: application/json']
+        ]);
+        $raw = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($raw === false || $code !== 200) {
+            return null;
+        }
+        $json = json_decode((string) $raw, true);
+        return is_array($json) ? $json : null;
+    }
+
+    // =================================================================
+    // Fahrzeugsymbol
+    // =================================================================
+
+    private function MarkerData(): array
+    {
+        $size = max(28, min(140, $this->ReadPropertyInteger('MarkerSize')));
+        $type = $this->ReadPropertyInteger('MarkerType');
+        $src = '';
+
+        if ($type === 1) {
+            $src = $this->VolvoImageUrl();
+        } elseif ($type === 2) {
+            $src = $this->ReadAttributeString('MarkerCache');
+        }
+
+        if ($src === '') {
+            return ['type' => 'icon', 'size' => $size];
+        }
+        // Volvo-Bild ist freigestellt -> frei stehend; eigenes Foto wahlweise rund
+        $round = $type === 2 && $this->ReadPropertyBoolean('MarkerRound');
+        return ['type' => $round ? 'round' : 'free', 'src' => $src, 'size' => $size];
+    }
+
+    private function VolvoImageUrl(): string
+    {
+        $volvo = $this->ReadPropertyInteger('VolvoInstance');
+        if ($volvo <= 0 || !@IPS_InstanceExists($volvo) || !function_exists('VOLVO_GetVehicleImageUrl')) {
+            return '';
+        }
+        $url = (string) @VOLVO_GetVehicleImageUrl($volvo);
+        if (!preg_match('#^https://#', $url)) {
+            return '';
+        }
+        // für das Symbol reicht eine kleine Breite
+        return preg_replace('/([?&]w=)\d+/', '${1}300', $url);
+    }
+
+    /** Hochgeladenes Bild einmal verkleinern und als data-URL merken. */
+    private function BuildMarkerCache(): void
+    {
+        $raw = base64_decode($this->ReadPropertyString('MarkerImage'), true);
+        if ($raw === false || $raw === '') {
+            $this->WriteAttributeString('MarkerCache', '');
+            return;
+        }
+        $mime = self::ImageMime($raw);
+        if ($mime === '') {
+            $this->WriteAttributeString('MarkerCache', '');
+            return;
+        }
+
+        if (function_exists('imagecreatefromstring') && ($img = @imagecreatefromstring($raw)) !== false) {
+            $w = imagesx($img);
+            $h = imagesy($img);
+            $square = $this->ReadPropertyBoolean('MarkerRound');
+            if ($square) {
+                // Mitte quadratisch ausschneiden, damit der Kreis gefüllt ist
+                $side = min($w, $h);
+                $sx = (int) (($w - $side) / 2);
+                $sy = (int) (($h - $side) / 2);
+                $tw = $th = min(self::MARKER_MAX_PX, $side);
+                $sw = $sh = $side;
+            } else {
+                $sx = $sy = 0;
+                $sw = $w;
+                $sh = $h;
+                $f = min(1, self::MARKER_MAX_PX / max($w, $h));
+                $tw = max(1, (int) round($w * $f));
+                $th = max(1, (int) round($h * $f));
+            }
+            $out = imagecreatetruecolor($tw, $th);
+            imagealphablending($out, false);
+            imagesavealpha($out, true);
+            imagefill($out, 0, 0, imagecolorallocatealpha($out, 0, 0, 0, 127));
+            imagecopyresampled($out, $img, 0, 0, $sx, $sy, $tw, $th, $sw, $sh);
+            ob_start();
+            imagepng($out, null, 9);
+            $raw = (string) ob_get_clean();
+            $mime = 'image/png';
+            imagedestroy($img);
+            imagedestroy($out);
+        }
+
+        $this->WriteAttributeString('MarkerCache', 'data:' . $mime . ';base64,' . base64_encode($raw));
+    }
+
+    private static function ImageMime(string $raw): string
+    {
+        if (strncmp($raw, "\x89PNG", 4) === 0) {
+            return 'image/png';
+        }
+        if (strncmp($raw, "\xFF\xD8", 2) === 0) {
+            return 'image/jpeg';
+        }
+        if (substr($raw, 0, 4) === 'RIFF' && substr($raw, 8, 4) === 'WEBP') {
+            return 'image/webp';
+        }
+        if (strncmp($raw, 'GIF8', 4) === 0) {
+            return 'image/gif';
         }
         return '';
     }
