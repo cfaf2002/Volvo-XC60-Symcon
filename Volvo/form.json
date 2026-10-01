@@ -89,6 +89,30 @@
         },
         {
             "type": "ExpansionPanel",
+            "caption": "Kachel",
+            "items": [
+                {
+                    "type": "SelectFile",
+                    "name": "TileBackground",
+                    "caption": "Hintergrundbild (optional)",
+                    "extensions": ".jpg,.jpeg,.png,.webp"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "TileDim",
+                    "caption": "Bild abdunkeln",
+                    "suffix": "%",
+                    "minimum": 0,
+                    "maximum": 90
+                },
+                {
+                    "type": "Label",
+                    "caption": "Das Fahrzeugbild kommt automatisch von Volvo (Recht conve:vehicle_relation)."
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
             "caption": "Benachrichtigung",
             "items": [
                 {

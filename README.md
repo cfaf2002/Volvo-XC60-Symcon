@@ -14,6 +14,7 @@ Gedacht vor allem für Plug-in-Hybride und Elektroautos, z. B. um den Akkustand 
 - Kilometerstand, Zentralverriegelung, Türen/Klappen und Fenster offen oder geschlossen
 - Modell, Baujahr, Akkugröße und das **offizielle Fahrzeugbild** (PNG mit transparentem Hintergrund)
 - Offizielle Anmeldung per OAuth2 mit **eigenen** Zugangsdaten, Token werden automatisch erneuert
+- **Eigene Kachel** für die Kachel-Visualisierung (Akku-Ring, Fahrzeugbild, Reichweite, Laden, Sicherheit, Standort)
 - Push-Benachrichtigung, wenn die Anmeldung erneuert werden muss
 
 Werte, die dein Fahrzeug nicht liefert, werden nicht angelegt bzw. bleiben leer.
@@ -96,6 +97,20 @@ Danach mit **„Fahrzeuge anzeigen“** prüfen, ob dein Fahrzeug gefunden wird.
 Hinweis: Die Werte stammen aus der Volvo-Cloud. Das Auto meldet sie nicht live, sondern in Abständen – vor allem wenn es
 geparkt ist, kann ein Wert einige Minuten alt sein.
 
+## Kachel-Visualisierung
+
+Die Instanz bringt eine eigene Kachel mit – einfach in der Kachel-Visualisierung hinzufügen:
+
+- **Akku-Ring** mit Akkustand (grün ab 50 %, gelb ab 20 %, darunter rot), elektrischer Reichweite und – falls im Auto
+  eingestellt – einer Markierung für das Ladeziel. Beim Laden pulsiert der Ring.
+- **Offizielles Fahrzeugbild** von Volvo (braucht das Recht `conve:vehicle_relation`).
+- **Chips** für Verriegelung, Türen, Fenster und „Zu Hause“ – grün, wenn alles in Ordnung ist, orange, wenn etwas offen ist.
+- **Werteliste:** Laden (mit Restzeit), Reichweite elektrisch und Tank, was geöffnet ist, Standort (mit Link zur Karte), Kilometerstand.
+- Auf dem **Handy** (flache Kachel): Ring links, Laden und Reichweite rechts, Chips als Symbole.
+- Optional ein **Hintergrundbild** unter „Kachel“ in der Instanz.
+
+Es werden nur Werte angezeigt, die das Fahrzeug tatsächlich liefert.
+
 ## Zusammenspiel mit dem Easee-Wallbox-Modul
 
 1. In der Easee-Instanz unter **„Akkustand Fahrzeug“** den Schalter aktivieren und die Variable **„Akkustand“** dieser
@@ -138,6 +153,7 @@ Armin Frohwerk
 
 ## Versionen
 
+- **1.9** – Eigene Kachel für die Kachel-Visualisierung (mit optionalem Hintergrundbild)
 - **1.8** – Optionaler Standort mit Kartenlink, Entfernung von zu Hause und „Zu Hause“
 - **1.7** – Türen/Klappen und Fenster: geschlossen ja/nein und Liste, was offen ist
 - **1.6** – Recht conve:doors_status in der Standardliste ergänzt (für „Verriegelt“ nötig)

@@ -14,8 +14,12 @@ declare(strict_types=1);
  *
  * Autor: Armin Frohwerk
  */
+require_once __DIR__ . '/VolvoTile.php';
+
 class Volvo extends IPSModule
 {
+    use VolvoTile;
+
     private const AUTHORIZE_URL = 'https://volvoid.eu.volvocars.com/as/authorization.oauth2';
     private const TOKEN_URL = 'https://volvoid.eu.volvocars.com/as/token.oauth2';
     private const API = 'https://api.volvocars.com';
@@ -74,6 +78,11 @@ class Volvo extends IPSModule
         $this->RegisterAttributeInteger('LoginNotified', 0);
 
         $this->RegisterTimer('UpdateTimer', 0, 'VOLVO_Update($_IPS[\'TARGET\']);');
+
+        // Eigene Kachel in der Kachel-Visualisierung
+        $this->RegisterPropertyString('TileBackground', '');
+        $this->RegisterPropertyInteger('TileDim', 55);
+        $this->SetVisualizationType(1);
     }
 
     public function ApplyChanges()
@@ -89,6 +98,7 @@ class Volvo extends IPSModule
         }
 
         $this->RegisterHook(self::HOOK);
+        $this->PushTile(true);
 
         $wanted = strtoupper(trim($this->ReadPropertyString('VIN')));
         if ($wanted !== '' && $wanted !== $this->ReadAttributeString('ActiveVin')) {
@@ -394,6 +404,7 @@ class Volvo extends IPSModule
             if ($this->GetStatus() !== 102) {
                 $this->SetStatus(102);
             }
+            $this->PushTile();
             return true;
         } catch (VolvoLoginException $e) {
             $this->ReportError($e->getMessage(), 202);
@@ -846,6 +857,7 @@ class Volvo extends IPSModule
     {
         $this->SetValue('LastError', $message);
         $this->SetStatus($status);
+        $this->PushTile();
         $this->LogMessage($message, KL_WARNING);
     }
 
