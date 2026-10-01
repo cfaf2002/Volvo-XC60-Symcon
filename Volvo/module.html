@@ -77,6 +77,12 @@
                 overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; min-width: 0; }
     .vx-value small { font-weight: 400; color: var(--muted); font-size: .82em; margin-left: 6px; }
     .vx-value a { color: inherit; text-decoration: none; border-bottom: 1px dotted currentColor; }
+    /* Standort zweizeilig: Straße als Link, darunter PLZ/Ort */
+    .vx-value.loc { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; line-height: 1.25; }
+    .vx-value.loc a, .vx-value.loc small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .vx-value.loc a { text-decoration: underline; text-decoration-style: dotted; text-decoration-thickness: 1px;
+                      text-underline-offset: 3px; border-bottom: 0; }
+    .vx-value.loc small { margin-left: 0; font-size: .78em; }
 
     @keyframes pulse { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--s) 0%, transparent); } }
     @keyframes glow { 50% { opacity: .55; } }
@@ -110,6 +116,7 @@
         .vx-label { display: none; }
         .vx-value { margin-left: 0; text-align: left; font-size: 14px; }
         .vx-value small { display: none; }
+        .vx-value.loc { align-items: flex-start; }
 
         .vx-chips { order: 9; flex-wrap: nowrap; gap: 5px; margin: 6px 0 0; }
         .vx-chip { padding: 4px 7px; gap: 0; }
@@ -205,7 +212,7 @@
             <div class="vx-row opt hide" id="rowLocation">
                 <svg class="vx-ico" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>
                 <span class="vx-label">Standort</span>
-                <span class="vx-value" id="location">–</span>
+                <span class="vx-value loc" id="location">–</span>
             </div>
             <div class="vx-row opt" id="rowOdo">
                 <svg class="vx-ico" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 13l4-3M12 5V3"/></svg>

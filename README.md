@@ -169,7 +169,7 @@ PHP-Befehle: `VOLVOMAP_Refresh($id)`, `VOLVOMAP_GetAddress($id)`, `VOLVOMAP_GetH
 Im Bereich **„Standort“** der Volvo-Instanz:
 - **„Adresse ermitteln“** (Standard: an): Straße, Hausnummer und Ort werden bei OpenStreetMap (Nominatim) nachgeschlagen –
   nur wenn sich das Auto mehr als 30 m bewegt hat. Dazu geht die Position an nominatim.openstreetmap.org.
-  Die Kachel zeigt dann unter „Standort“ die **Adresse statt der Entfernung**; ist das Auto daheim, steht klein „Zu Hause“ dahinter.
+  Die Kachel zeigt dann unter „Standort“ die **Adresse statt der Entfernung**: die Straße als Link, darunter PLZ und Ort (daheim „Zu Hause“).
 - **„Standort-Link öffnet“**: OpenStreetMap, Google Maps oder Apple Karten. Ein Tipp auf die Adresse öffnet den Standort dort –
   auf dem Handy direkt in der Karten-App.
 - Die Instanz **„Volvo Karte“** übernimmt diese Adresse automatisch, es wird also nicht doppelt nachgefragt.
@@ -217,6 +217,7 @@ Armin Frohwerk
 
 ## Versionen
 
+- **2.3** – Kachel: Standort zweizeilig (Straße als Link, darunter PLZ und Ort) statt abgeschnitten
 - **2.2** – Volvo Fahrzeug: Adresse des Standorts (Variable und Kachel statt Entfernung), Link wahlweise zu OpenStreetMap,
   Google Maps oder Apple Karten; Volvo Karte nutzt dieselbe Adresse
 - **2.1** – Volvo Karte: Straße, Name und Ort unter der Karte (OpenStreetMap), Variable „Adresse“;
