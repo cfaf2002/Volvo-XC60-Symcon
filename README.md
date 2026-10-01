@@ -4,6 +4,11 @@ Modul zum Auslesen eines **Volvo** über die offiziellen Schnittstellen der
 [Volvo Cars Developer Platform](https://developer.volvocars.com/) (Connected Vehicle API und Energy API).
 Gedacht vor allem für Plug-in-Hybride und Elektroautos, z. B. um den Akkustand an das Easee-Wallbox-Modul zu geben.
 
+Die Bibliothek enthält zwei Instanz-Typen:
+
+- **Volvo** – liest die Fahrzeugdaten aus der Volvo-Cloud (siehe unten)
+- **Volvo Karte** – Kartenkachel mit dem Standort des Fahrzeugs und optionalem Verlauf
+
 ## Funktionen
 
 - **Akkustand** in Prozent – bei älteren Plug-in-Hybriden automatisch über den Tank-Endpunkt, wenn die Energy API ihn nicht liefert
@@ -112,6 +117,37 @@ Die Instanz bringt eine eigene Kachel mit – einfach in der Kachel-Visualisieru
 
 Es werden nur Werte angezeigt, die das Fahrzeug tatsächlich liefert.
 
+## Volvo Karte
+
+Eigene Kachel mit einer **OpenStreetMap-Karte**, die den Standort aus der Volvo-Instanz zeigt.
+
+**Einrichten**
+1. In der Volvo-Instanz **„Standort abrufen“** aktivieren (Recht `location:read`).
+2. **Instanz hinzufügen → „Volvo Karte“**, dort die Volvo-Instanz auswählen.
+3. Die Instanz in der Kachel-Visualisierung hinzufügen – am besten groß (2×2 oder breiter).
+
+**Was die Karte zeigt**
+- Das Fahrzeug als Markierung. Kommt ein neuer Standort, **wandert die Markierung in der offenen Kachel mit** – ohne Neuladen.
+  Wer die Karte verschiebt oder zoomt, behält seine Ansicht; **„Auto“** zentriert wieder auf das Fahrzeug.
+- Optional das **Zuhause** als grüner Kreis (Standort aus Kern-Instanzen → Location Control, Radius aus der Volvo-Instanz).
+- Eine Infoleiste: „Zu Hause“ bzw. Entfernung, „steht seit …“, Stand der Daten und Akkustand.
+- Bedienung: ziehen, Mausrad bzw. zwei Finger zum Zoomen, Doppelklick; **+ / −** auf großen Kacheln.
+- Dunkle oder helle Karte (Schalter in der Instanz).
+
+**Verlauf (per Schalter)**
+- **„Verlauf mitschreiben“** in der Instanz aktivieren. Ein neuer Punkt wird nur gespeichert, wenn sich das Auto um mehr als 30 m bewegt hat.
+- Aufbewahrung einstellbar (Standard 7 Tage, bis 90 Tage). Ältere Punkte werden automatisch entfernt.
+- In der Kachel zwischen **24 h**, **7 Tage** und **Alles** umschalten; die Karte zoomt dann auf den Verlauf.
+- Ausschalten stoppt das Mitschreiben, der bisherige Verlauf bleibt bis „Verlauf löschen“ erhalten.
+
+**Gut zu wissen**
+- Volvo meldet den Standort nicht live, sondern vor allem beim Abstellen und dann in Abständen. Der Verlauf ist deshalb eine
+  Folge von Standorten (Parkplätzen), keine exakte Fahrtroute.
+- Die Kartenbilder kommen von OpenStreetMap – das Gerät, auf dem die Kachel angezeigt wird, braucht Internet. Es wird keine
+  fremde Skript-Bibliothek nachgeladen und kein API-Schlüssel benötigt. Der Standort selbst bleibt in deinem Symcon.
+
+PHP-Befehle: `VOLVOMAP_Refresh($id)`, `VOLVOMAP_GetHistory($id)` (JSON: `[[Zeitstempel, Breite, Länge], …]`), `VOLVOMAP_ClearHistory($id)`
+
 ## Zusammenspiel mit dem Easee-Wallbox-Modul
 
 1. In der Easee-Instanz unter **„Akkustand Fahrzeug“** den Schalter aktivieren und die Variable **„Akkustand“** dieser
@@ -154,6 +190,7 @@ Armin Frohwerk
 
 ## Versionen
 
+- **2.0** – Neuer Instanz-Typ **„Volvo Karte“**: Kartenkachel mit Standort, Zuhause-Kreis und optionalem Verlauf
 - **1.10** – Kachel für alle Handy-Größen überarbeitet (1×1, 2×1, 2×2)
 - **1.9** – Eigene Kachel für die Kachel-Visualisierung (mit optionalem Hintergrundbild)
 - **1.8** – Optionaler Standort mit Kartenlink, Entfernung von zu Hause und „Zu Hause“
