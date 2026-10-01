@@ -81,33 +81,61 @@
     @keyframes pulse { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--s) 0%, transparent); } }
     @keyframes glow { 50% { opacity: .55; } }
 
-    /* Schmale Kacheln: untereinander */
+    /* ---------- Handy-Ansichten ----------
+       Symcon-App: 1x1 ≈ 165x165, 2x1 ≈ 345x165, 2x2 ≈ 345x345 (je nach Gerät) */
+
+    /* Schmal und hoch (z. B. 2x3): untereinander */
     @media (max-width: 640px) {
         .vx-main { grid-template-columns: 1fr; align-content: center; gap: 12px; }
         .vx-ring { width: min(62vw, 34vh, 260px); }
         .vx-car { max-height: 18vh; }
     }
     @media (max-width: 640px) and (max-height: 700px) { .vx-car { display: none !important; } }
-    @media (max-width: 640px) and (max-height: 520px) { .vx-row.opt { display: none; } }
 
-    /* Flache Kacheln (Handy): Ring links, Wichtigstes rechts */
-    @media (max-height: 300px) and (min-width: 280px) {
-        .vx { padding-top: 44px; padding-bottom: 10px; gap: 6px; }
-        .vx-main { grid-template-columns: auto minmax(0, 1fr); gap: clamp(10px, 4vw, 28px); }
-        .vx-ring { width: min(38vw, calc(100vh - 70px)); }
-        .vx-soc { font-size: clamp(20px, 12vh, 36px); }
-        .vx-range, .vx-model, .vx-updated, .vx-car, .vx-plug { display: none !important; }
+    /* Kompakt (2x1 und 2x2): Ring links, Werte rechts */
+    @media (min-width: 260px) and (max-height: 300px),
+           (min-width: 260px) and (max-width: 640px) and (max-height: 520px) {
+        .vx { padding: 46px 12px 10px; gap: 6px; }
+        .vx-head { gap: 8px; }
+        .vx-model, .vx-car, .vx-plug { display: none !important; }
+        .vx-updated { font-size: 10px; }
+        .vx-main { grid-template-columns: auto minmax(0, 1fr); align-content: center; gap: clamp(10px, 4vw, 22px); }
+        .vx-ring { width: min(42vw, calc(100vh - 82px), 190px); }
+        .vx-soc { font-size: clamp(22px, 9vmin, 40px); }
+        .vx-range { font-size: 11px; margin-top: 2px; }
         body.has-bg .vx-panel { padding: 8px 12px; border-radius: 12px; }
-        .vx-row { display: none; }
-        .vx-row.core { display: flex; padding: 6px 0; gap: 8px; border-top: 0; }
-        .vx-row.core:last-of-type { border-bottom: 0; }
+
+        .vx-row { display: none; padding: 6px 0; gap: 8px; border-top: 0 !important; }
+        .vx-row.core { display: flex; }
+        .vx-label { display: none; }
+        .vx-value { margin-left: 0; text-align: left; font-size: 14px; }
+        .vx-value small { display: none; }
+
         .vx-chips { order: 9; flex-wrap: nowrap; gap: 5px; margin: 6px 0 0; }
         .vx-chip { padding: 4px 7px; gap: 0; }
         .vx-chip span { display: none; }
         .vx-chip svg { width: 15px; height: 15px; }
-        .vx-label { font-size: 12px; } .vx-value { font-size: 14px; } .vx-value small { display: none; }
     }
-    @media (max-height: 180px) { .vx-panel { display: none; } .vx-main { grid-template-columns: 1fr; } }
+    /* 2x1 (flach): Reichweite steht schon unter dem Ring -> nur "Laden" */
+    @media (min-width: 260px) and (max-height: 230px) {
+        .vx-range, .vx-updated { display: none !important; }
+        .vx-row { padding: 4px 0; }
+    }
+    /* 2x2 (quadratisch): mehr Platz -> Standort und Geöffnet zusätzlich */
+    @media (min-width: 260px) and (max-width: 640px) and (min-height: 301px) and (max-height: 520px) {
+        .vx-row:not(.hide)#rowLocation, .vx-row#rowOdo { display: flex; }
+        .vx-range { display: none; }
+    }
+
+    /* 1x1 (klein): nur Status und Akku-Ring */
+    @media (max-width: 259px) {
+        .vx { padding: 40px 8px 6px; gap: 2px; }
+        .vx-model, .vx-updated, .vx-range, .vx-plug, .vx-panel { display: none !important; }
+        .vx-status { font-size: 11px; }
+        .vx-main { grid-template-columns: 1fr; align-content: center; }
+        .vx-ring { width: min(78vw, calc(100vh - 70px)); }
+        .vx-soc { font-size: clamp(18px, 15vmin, 34px); }
+    }
 </style>
 
 <div class="vx-bg" id="bg"></div>

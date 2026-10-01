@@ -106,7 +106,8 @@ Die Instanz bringt eine eigene Kachel mit – einfach in der Kachel-Visualisieru
 - **Offizielles Fahrzeugbild** von Volvo (braucht das Recht `conve:vehicle_relation`).
 - **Chips** für Verriegelung, Türen, Fenster und „Zu Hause“ – grün, wenn alles in Ordnung ist, orange, wenn etwas offen ist.
 - **Werteliste:** Laden (mit Restzeit), Reichweite elektrisch und Tank, was geöffnet ist, Standort (mit Link zur Karte), Kilometerstand.
-- Auf dem **Handy** (flache Kachel): Ring links, Laden und Reichweite rechts, Chips als Symbole.
+- Auf dem **Handy** passt sich die Kachel der Größe an: klein (1×1) nur Status und Akku-Ring; breit (2×1) Ring links, Laden und
+  Reichweite rechts; quadratisch (2×2) zusätzlich Standort und Kilometerstand. Verriegelung, Türen und Fenster als farbige Symbole.
 - Optional ein **Hintergrundbild** unter „Kachel“ in der Instanz.
 
 Es werden nur Werte angezeigt, die das Fahrzeug tatsächlich liefert.
@@ -153,6 +154,7 @@ Armin Frohwerk
 
 ## Versionen
 
+- **1.10** – Kachel für alle Handy-Größen überarbeitet (1×1, 2×1, 2×2)
 - **1.9** – Eigene Kachel für die Kachel-Visualisierung (mit optionalem Hintergrundbild)
 - **1.8** – Optionaler Standort mit Kartenlink, Entfernung von zu Hause und „Zu Hause“
 - **1.7** – Türen/Klappen und Fenster: geschlossen ja/nein und Liste, was offen ist
