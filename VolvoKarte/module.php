@@ -47,6 +47,8 @@ class VolvoKarte extends IPSModule
         $this->RegisterAttributeInteger('GeocodeFailed', 0);
         $this->RegisterAttributeString('MarkerCache', '');
 
+        $this->RegisterTimer('RefreshTimer', 0, 'VOLVOMAP_Refresh($_IPS[\'TARGET\']);');
+
         $this->SetVisualizationType(1);
     }
 
@@ -73,14 +75,18 @@ class VolvoKarte extends IPSModule
         if ($old > 0 && $old !== $new) {
             $this->UnregisterMessage($old, VM_UPDATE);
         }
-        if ($new > 0 && $old !== $new) {
+        // Anmeldungen überleben keinen Neustart von Symcon -> immer neu anmelden
+        if ($new > 0) {
             $this->RegisterMessage($new, VM_UPDATE);
         }
         $this->WriteAttributeInteger('Watched', $new);
 
         if ($this->ReadPropertyInteger('VolvoInstance') <= 0 || $new === 0) {
+            $this->SetTimerInterval('RefreshTimer', 0);
             $this->SetStatus(201);
         } else {
+            // Sicherheitsnetz: zusätzlich alle 5 Minuten selbst nachsehen
+            $this->SetTimerInterval('RefreshTimer', 5 * 60 * 1000);
             $this->SetStatus(102);
             $this->Refresh();
         }
@@ -177,7 +183,8 @@ class VolvoKarte extends IPSModule
         };
 
         $model = (string) ($value('Model') ?? '');
-        $lastUpdate = (int) ($value('LastUpdate') ?? 0);
+        // Bevorzugt: Zeitpunkt des Standorts laut Volvo, sonst letzter Abruf
+        $lastUpdate = (int) ($value('LocationTime') ?? 0) ?: (int) ($value('LastUpdate') ?? 0);
 
         return [
             'pos'         => $pos,
@@ -190,7 +197,7 @@ class VolvoKarte extends IPSModule
             'atHome'      => $value('AtHome'),
             'distance'    => $value('DistanceHome'),
             'parkedSince' => $this->ReadAttributeInteger('ParkedSince'),
-            'updated'     => $lastUpdate > 0 ? date('H:i', $lastUpdate) : '–',
+            'updated'     => $lastUpdate > 0 ? date(date('Ymd', $lastUpdate) === date('Ymd') ? 'H:i' : 'd.m. H:i', $lastUpdate) : '–',
             'hint'        => $this->Hint($pos),
             'address'     => $this->ReadPropertyBoolean('ShowAddress') ? (json_decode($this->ReadAttributeString('Address'), true) ?: null) : null,
             'marker'      => $this->MarkerData()

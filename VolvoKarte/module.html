@@ -396,13 +396,16 @@
             $('place').title = '';
         }
 
-        if (state.parkedSince > 0 && state.pos) {
+        const withAddr = !!(a && state.pos && (a.street || a.name));
+        if (withAddr) {
+            sub.push('Standort ' + state.updated);      // wann Volvo den Standort gemeldet hat
+        } else if (state.parkedSince > 0 && state.pos) {
             const d = new Date(state.parkedSince * 1000);
             const today = d.toDateString() === new Date().toDateString();
             sub.push('steht seit ' + (today ? '' : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ') +
                      d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
         }
-        if (!(a && state.pos && (a.street || a.name))) sub.push('Stand ' + state.updated);
+        if (!withAddr) sub.push('Stand ' + state.updated);
         $('sub').textContent = sub.join(' · ');
         $('soc').textContent = (state.soc !== null && state.soc !== undefined) ? state.soc + ' %' : '';
     }

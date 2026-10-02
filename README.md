@@ -157,6 +157,8 @@ Eigene Kachel mit einer **OpenStreetMap-Karte**, die den Standort aus der Volvo-
 - Ausschalten stoppt das Mitschreiben, der bisherige Verlauf bleibt bis „Verlauf löschen“ erhalten.
 
 **Gut zu wissen**
+- Die Karte zeigt unten, von wann der Standort laut Volvo stammt („Standort 07:12“, ältere Werte mit Datum). Volvo meldet einen
+  neuen Standort vor allem beim Abstellen bzw. Verriegeln – während der Fahrt bleibt der letzte Parkplatz stehen.
 - Volvo meldet den Standort nicht live, sondern vor allem beim Abstellen und dann in Abständen. Der Verlauf ist deshalb eine
   Folge von Standorten (Parkplätzen), keine exakte Fahrtroute.
 - Die Kartenbilder kommen von OpenStreetMap – das Gerät, auf dem die Kachel angezeigt wird, braucht Internet. Es wird keine
@@ -217,6 +219,7 @@ Armin Frohwerk
 
 ## Versionen
 
+- **2.4** – Volvo Karte aktualisiert sich nach einem Neustart von Symcon wieder (Anmeldung an die Volvo-Instanz wird jedes Mal erneuert), zusätzlich Prüfung alle 5 Minuten; neue Variable „Standort vom“ (Zeitpunkt des Standorts laut Volvo), die Karte zeigt diese Zeit
 - **2.3** – Kachel: Standort zweizeilig (Straße als Link, darunter PLZ und Ort) statt abgeschnitten
 - **2.2** – Volvo Fahrzeug: Adresse des Standorts (Variable und Kachel statt Entfernung), Link wahlweise zu OpenStreetMap,
   Google Maps oder Apple Karten; Volvo Karte nutzt dieselbe Adresse

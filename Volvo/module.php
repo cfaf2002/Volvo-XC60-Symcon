@@ -803,6 +803,13 @@ class Volvo extends IPSModule
         $this->SetValue('Longitude', $lon);
         $this->SetValue('MapLink', $this->MapUrl($lat, $lon));
 
+        // Zeitpunkt, zu dem Volvo diesen Standort ermittelt hat
+        $stamp = strtotime((string) ($loc['properties']['timestamp'] ?? ''));
+        if ($stamp !== false && $stamp > 0) {
+            $this->MaintainOptional('LocationTime', 'Standort vom', VARIABLETYPE_INTEGER, '~UnixTimestamp', 56);
+            $this->SetValue('LocationTime', $stamp);
+        }
+
         if ($this->ReadPropertyBoolean('ShowAddress')) {
             $this->UpdateAddress($lat, $lon);
         }
