@@ -219,6 +219,7 @@ Armin Frohwerk
 
 ## Versionen
 
+- **2.5** – Volvo Karte: auf flachen, breiten Kacheln (z. B. Tablet) einzeilige, niedrige Infoleiste und kleinere Knöpfe – mehr Platz für die Karte
 - **2.4** – Volvo Karte aktualisiert sich nach einem Neustart von Symcon wieder (Anmeldung an die Volvo-Instanz wird jedes Mal erneuert), zusätzlich Prüfung alle 5 Minuten; neue Variable „Standort vom“ (Zeitpunkt des Standorts laut Volvo), die Karte zeigt diese Zeit
 - **2.3** – Kachel: Standort zweizeilig (Straße als Link, darunter PLZ und Ort) statt abgeschnitten
 - **2.2** – Volvo Fahrzeug: Adresse des Standorts (Variable und Kachel statt Entfernung), Link wahlweise zu OpenStreetMap,

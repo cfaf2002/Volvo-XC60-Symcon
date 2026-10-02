@@ -61,6 +61,18 @@
         .vm-btn.big { display: none; }          /* Zoomen per Fingergeste */
         .vm-range { flex-direction: column; gap: 4px; margin-top: 0; }
     }
+    /* Flache, breite Kacheln (z. B. Tablet): Infoleiste einzeilig und niedrig, mehr Karte */
+    @media (min-width: 461px) and (max-height: 340px) {
+        .vm-info { left: 8px; right: 8px; bottom: 16px; padding: 6px 12px; border-radius: 10px; font-size: 12.5px; }
+        .vm-text { flex-direction: row; align-items: baseline; gap: 8px; }
+        .vm-place { flex: none; max-width: 45%; }
+        .vm-sub { flex: 1; }
+        .vm-sub::before { content: '·'; margin-right: 8px; }
+        .vm-sub:empty::before { content: none; }
+        .vm-ctrl { top: 52px; gap: 4px; }
+        .vm-btn { padding: 5px 9px; font-size: 11px; min-width: 30px; }
+        .vm-btn.big { padding: 2px 0; font-size: 14px; }
+    }
     @media (max-width: 300px), (max-height: 220px) {
         .vm-ctrl, .vm-sub { display: none; }
         .vm-info { bottom: 16px; padding: 6px 10px; font-size: 12px; }
