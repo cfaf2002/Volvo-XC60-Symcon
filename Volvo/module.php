@@ -1,5 +1,12 @@
 <?php
 
+/**
+ * Volvo für IP-Symcon
+ *
+ * Copyright (c) 2026 Armin Frohwerk
+ * SPDX-License-Identifier: MIT
+ */
+
 declare(strict_types=1);
 
 /**
@@ -17,7 +24,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/VolvoTile.php';
 require_once __DIR__ . '/../libs/VolvoGeocoder.php';
 
-class Volvo extends IPSModule
+class Volvo extends IPSModuleStrict
 {
     use VolvoTile;
     use VolvoGeocoder;
@@ -30,9 +37,22 @@ class Volvo extends IPSModule
     private const LOCATION = '/location/v1/vehicles';
     private const LOCATION_CONTROL_GUID = '{45E97A63-F870-408A-B259-2933F7EABF74}';
 
-    private const WEBHOOK_GUID = '{015A6EB8-D6E5-4B93-B496-0D3F77AE9FE1}';
     private const CONNECT_GUID = '{9486D575-BE8C-4ED8-B5B5-20930E26DE6F}';
+    private const MAP_GUID = '{BEC364E9-0470-407D-829E-BC42DC2EB4BC}';
     private const HOOK = '/hook/volvo';
+    private const LOGIN_VALID = 900;        // Anmelde-Link gilt 15 Minuten
+
+    /** Ladestatus: [Wert, Text, Symbol, Farbe] */
+    private const CHARGING_OPTIONS = [
+        [0, 'Unbekannt', 'circle-question', 0x7F8C8D],
+        [1, 'Bereit', 'plug', 0x95A5A6],
+        [2, 'Lädt', 'bolt', 0x2ECC71],
+        [3, 'Fertig geladen', 'circle-check', 0x3498DB],
+        [4, 'Geplant', 'clock', 0xF1C40F],
+        [5, 'Smart Charging', 'leaf', 0x1ABC9C],
+        [6, 'Fehler', 'triangle-exclamation', 0xE74C3C],
+        [7, 'Entlädt', 'arrow-down', 0xE67E22]
+    ];
 
     // Nur die Rechte, die das Modul wirklich braucht (müssen in der
     // Volvo-Anwendung freigeschaltet sein)
@@ -54,7 +74,7 @@ class Volvo extends IPSModule
     // Symcon-Lebenszyklus
     // =================================================================
 
-    public function Create()
+    public function Create(): void
     {
         parent::Create();
 
@@ -70,13 +90,14 @@ class Volvo extends IPSModule
         $this->RegisterPropertyBoolean('EnableLocation', false);
         $this->RegisterPropertyInteger('HomeRadius', 150);
         $this->RegisterPropertyBoolean('ShowAddress', true);
-        $this->RegisterPropertyInteger('MapService', 0);       // 0 OpenStreetMap, 1 Google Maps, 2 Apple Karten
+        $this->RegisterPropertyInteger('MapService', 3);       // 0 OpenStreetMap, 1 Google Maps, 2 Apple Karten, 3 Volvo Karte
 
         $this->RegisterAttributeString('AccessToken', '');
         $this->RegisterAttributeString('RefreshToken', '');
         $this->RegisterAttributeInteger('TokenExpires', 0);
         $this->RegisterAttributeString('CodeVerifier', '');
         $this->RegisterAttributeString('AuthState', '');
+        $this->RegisterAttributeInteger('AuthStarted', 0);
         $this->RegisterAttributeString('ActiveVin', '');
         $this->RegisterAttributeString('Vehicle', '{}');
         $this->RegisterAttributeInteger('LoginNotified', 0);
@@ -88,15 +109,19 @@ class Volvo extends IPSModule
         // Eigene Kachel in der Kachel-Visualisierung
         $this->RegisterPropertyString('TileBackground', '');
         $this->RegisterPropertyInteger('TileDim', 55);
+        $this->RegisterPropertyInteger('TileTheme', 0);         // 0 = Symcon-Design, 1 = Dunkel, 2 = Hell
+        $this->RegisterAttributeString('ImageCache', '{}');
         $this->SetVisualizationType(1);
+
+        // Rückruf von Volvo nach der Anmeldung (ab Symcon 8.1 direkt im Modul, wird beim Löschen automatisch entfernt)
+        $this->RegisterHook('volvo');
     }
 
-    public function ApplyChanges()
+    public function ApplyChanges(): void
     {
         parent::ApplyChanges();
 
         $this->RegisterMessage(0, IPS_KERNELSTARTED);
-        $this->CreateProfiles();
         $this->CreateVariables();
         $this->ApplyLocationSettings();
 
@@ -104,7 +129,6 @@ class Volvo extends IPSModule
             return;
         }
 
-        $this->RegisterHook(self::HOOK);
         $this->PushTile(true);
 
         $wanted = strtoupper(trim($this->ReadPropertyString('VIN')));
@@ -136,7 +160,7 @@ class Volvo extends IPSModule
         $this->SetStatus(102);
     }
 
-    public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
+    public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
     {
         if ($Message === IPS_KERNELSTARTED) {
             $this->ApplyChanges();
@@ -144,7 +168,7 @@ class Volvo extends IPSModule
     }
 
     /** Formular mit Hinweis auf die passende Weiterleitungs-Adresse ergänzen. */
-    public function GetConfigurationForm()
+    public function GetConfigurationForm(): string
     {
         $form = json_decode(file_get_contents(__DIR__ . '/form.json'), true);
 
@@ -205,6 +229,7 @@ class Volvo extends IPSModule
         $state = bin2hex(random_bytes(16));
         $this->WriteAttributeString('CodeVerifier', $verifier);
         $this->WriteAttributeString('AuthState', $state);
+        $this->WriteAttributeInteger('AuthStarted', time());
 
         $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
 
@@ -238,9 +263,9 @@ class Volvo extends IPSModule
 
         if (strpos($UrlOrCode, 'code=') !== false) {
             parse_str((string) parse_url($UrlOrCode, PHP_URL_QUERY), $query);
-            $code = (string) ($query['code'] ?? '');
-            if (isset($query['state']) && $query['state'] !== $this->ReadAttributeString('AuthState')) {
-                return 'Die Adresse gehört nicht zur letzten Anmeldung. Bitte erneut „Bei Volvo anmelden“ klicken.';
+            $code = self::QueryString($query, 'code');
+            if (!$this->ValidState(self::QueryString($query, 'state'))) {
+                return 'Die Adresse gehört nicht zur letzten Anmeldung oder ist abgelaufen. Bitte erneut „Bei Volvo anmelden“ klicken.';
             }
         }
 
@@ -269,19 +294,27 @@ class Volvo extends IPSModule
     }
 
     /** Rückruf von Volvo nach der Anmeldung (WebHook /hook/volvo). */
-    protected function ProcessHookData()
+    protected function ProcessHookData(): void
     {
-        $code = (string) ($_GET['code'] ?? '');
-        $state = (string) ($_GET['state'] ?? '');
+        // Nur einfache Texte annehmen (z. B. kein code[]=… als Array)
+        $code = self::QueryString($_GET, 'code');
+        $state = self::QueryString($_GET, 'state');
 
         header('Content-Type: text/html; charset=utf-8');
+        // Seite nicht zwischenspeichern, nicht einbetten und den Code nicht weiterreichen
+        header('Cache-Control: no-store');
+        header('X-Frame-Options: DENY');
+        header('X-Content-Type-Options: nosniff');
+        header('Referrer-Policy: no-referrer');
+        header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'");
 
-        if ($state === '' || $state !== $this->ReadAttributeString('AuthState')) {
+        if (!$this->ValidState($state)) {
             echo self::HookPage('Anmeldung nicht zugeordnet', 'Bitte in Symcon erneut „Bei Volvo anmelden“ klicken.', false);
             return;
         }
         if ($code === '') {
-            $error = (string) ($_GET['error_description'] ?? $_GET['error'] ?? 'Kein Code erhalten.');
+            $error = self::QueryString($_GET, 'error_description') ?: self::QueryString($_GET, 'error') ?: 'Kein Code erhalten.';
+            $error = mb_substr($error, 0, 300);
             echo self::HookPage('Anmeldung abgebrochen', $error, false);
             return;
         }
@@ -294,6 +327,21 @@ class Volvo extends IPSModule
             $this->SetValue('LastError', $e->getMessage());
             echo self::HookPage('Anmeldung fehlgeschlagen', $e->getMessage(), false);
         }
+    }
+
+    /** Wert aus einer Adresszeile, nur wenn es ein einfacher Text ist. */
+    private static function QueryString(array $query, string $key): string
+    {
+        $value = $query[$key] ?? '';
+        return is_string($value) ? $value : '';
+    }
+
+    /** State aus der Anmeldung prüfen: muss passen und darf höchstens 15 Minuten alt sein. */
+    private function ValidState(string $state): bool
+    {
+        $expected = $this->ReadAttributeString('AuthState');
+        return $state !== '' && $expected !== '' && hash_equals($expected, $state)
+            && time() - $this->ReadAttributeInteger('AuthStarted') <= self::LOGIN_VALID;
     }
 
     private function ExchangeCode(string $code): void
@@ -394,17 +442,26 @@ class Volvo extends IPSModule
             // Energie (Akku, Laden) - ältere Hybride liefern hier nicht alles
             // Einzelne Bereiche dürfen fehlen (Recht nicht freigegeben oder
             // vom Fahrzeug nicht unterstützt) - dann einfach überspringen
-            $energy = $this->Optional(fn () => $this->Api(self::ENERGY . '/' . $vin . '/state'));
-            $fuel = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/fuel'));
-            $stats = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/statistics'));
-            $odo = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/odometer'));
-            $doors = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/doors'));
-            $windows = $this->Optional(fn () => $this->ApiData(self::CONNECTED . '/' . $vin . '/windows'));
+            // Alle Bereiche gleichzeitig abrufen (parallel statt nacheinander: ein Abruf dauert so
+            // nur etwa so lange wie die langsamste Antwort)
+            $paths = [
+                'energy'  => self::ENERGY . '/' . $vin . '/state',
+                'fuel'    => self::CONNECTED . '/' . $vin . '/fuel',
+                'stats'   => self::CONNECTED . '/' . $vin . '/statistics',
+                'odo'     => self::CONNECTED . '/' . $vin . '/odometer',
+                'doors'   => self::CONNECTED . '/' . $vin . '/doors',
+                'windows' => self::CONNECTED . '/' . $vin . '/windows'
+            ];
             if ($this->ReadPropertyBoolean('EnableLocation')) {
-                $this->ProcessLocation($this->Optional(fn () => $this->ApiData(self::LOCATION . '/' . $vin . '/location')));
+                $paths['location'] = self::LOCATION . '/' . $vin . '/location';
             }
+            $r = $this->ApiParallel($paths);
+            $data = fn (string $key) => is_array($r[$key]['data'] ?? null) ? $r[$key]['data'] : [];
 
-            $this->Process($energy, $fuel, $stats, $odo, $doors, $windows);
+            if (isset($paths['location'])) {
+                $this->ProcessLocation($data('location'));
+            }
+            $this->Process($r['energy'], $data('fuel'), $data('stats'), $data('odo'), $data('doors'), $data('windows'));
 
             $this->SetValue('LastError', '');
             $this->SetValue('LastUpdate', time());
@@ -546,25 +603,25 @@ class Volvo extends IPSModule
 
         $remaining = self::EnergyValue($energy, 'estimatedChargingTimeToTargetBatteryChargeLevel');
         if ($remaining !== null) {
-            $this->MaintainOptional('ChargingTimeLeft', 'Restladezeit', VARIABLETYPE_INTEGER, 'VOLVO.Minutes', 7);
+            $this->MaintainOptional('ChargingTimeLeft', 'Restladezeit', VARIABLETYPE_INTEGER, self::PValue(' min', 0, 'hourglass-half'), 7);
             $this->SetValue('ChargingTimeLeft', (int) $remaining);
         }
 
         $target = self::EnergyValue($energy, 'targetBatteryChargeLevel');
         if ($target !== null) {
-            $this->MaintainOptional('TargetLevel', 'Ziel-Akkustand (Fahrzeug)', VARIABLETYPE_INTEGER, 'VOLVO.Percent', 8);
+            $this->MaintainOptional('TargetLevel', 'Ziel-Akkustand (Fahrzeug)', VARIABLETYPE_INTEGER, self::PValue(' %', 0, 'bullseye'), 8);
             $this->SetValue('TargetLevel', (int) round((float) $target));
         }
 
         $fuelAmount = self::Value($fuel, 'fuelAmount');
         if ($fuelAmount !== null) {
-            $this->MaintainOptional('FuelAmount', 'Tankinhalt', VARIABLETYPE_FLOAT, 'VOLVO.Liter', 20);
+            $this->MaintainOptional('FuelAmount', 'Tankinhalt', VARIABLETYPE_FLOAT, self::PValue(' l', 1, 'gas-pump'), 20);
             $this->SetValue('FuelAmount', round((float) $fuelAmount, 1));
         }
 
         $tankRange = self::Value($stats, 'distanceToEmptyTank');
         if ($tankRange !== null) {
-            $this->MaintainOptional('FuelRange', 'Reichweite Tank', VARIABLETYPE_INTEGER, 'VOLVO.Km', 21);
+            $this->MaintainOptional('FuelRange', 'Reichweite Tank', VARIABLETYPE_INTEGER, self::PValue(' km', 0, 'gas-pump'), 21);
             $this->SetValue('FuelRange', (int) round((float) $tankRange));
         }
 
@@ -578,7 +635,7 @@ class Volvo extends IPSModule
 
         $lock = self::Value($doors, 'centralLock');
         if ($lock !== null) {
-            $this->MaintainOptional('Locked', 'Verriegelt', VARIABLETYPE_BOOLEAN, '~Lock', 23);
+            $this->MaintainOptional('Locked', 'Verriegelt', VARIABLETYPE_BOOLEAN, self::PBool('Entriegelt', 'Verriegelt', 'lock', 0x2ECC71, 0xE67E22), 23);
             $this->SetValue('Locked', $lock === 'LOCKED');
         }
 
@@ -597,15 +654,15 @@ class Volvo extends IPSModule
         ], $open);
 
         if ($doorsKnown) {
-            $this->MaintainOptional('DoorsClosed', 'Türen und Klappen', VARIABLETYPE_BOOLEAN, 'VOLVO.Closed', 24);
+            $this->MaintainOptional('DoorsClosed', 'Türen und Klappen', VARIABLETYPE_BOOLEAN, self::PBool('Offen', 'Geschlossen', 'door-closed', 0x2ECC71, 0xE74C3C), 24);
             $this->SetValue('DoorsClosed', $doorsOpen === 0);
         }
         if ($windowsKnown) {
-            $this->MaintainOptional('WindowsClosed', 'Fenster', VARIABLETYPE_BOOLEAN, 'VOLVO.Closed', 25);
+            $this->MaintainOptional('WindowsClosed', 'Fenster', VARIABLETYPE_BOOLEAN, self::PBool('Offen', 'Geschlossen', 'window-frame', 0x2ECC71, 0xE74C3C), 25);
             $this->SetValue('WindowsClosed', count($open) === $doorsOpen);
         }
         if ($doorsKnown || $windowsKnown) {
-            $this->MaintainOptional('OpenParts', 'Geöffnet', VARIABLETYPE_STRING, '', 26);
+            $this->MaintainOptional('OpenParts', 'Geöffnet', VARIABLETYPE_STRING, self::PValue('', 0, 'triangle-exclamation'), 26);
             $this->SetValue('OpenParts', count($open) > 0 ? implode(', ', $open) : 'Alles geschlossen');
         }
     }
@@ -633,6 +690,40 @@ class Volvo extends IPSModule
             [$code, $raw] = $this->HttpRequest('GET', self::API . $path, $headers, null);
         }
 
+        return $this->ParseApi($code, $raw, $path);
+    }
+
+    /**
+     * Mehrere GET-Abrufe gleichzeitig. Fehlende Rechte (403) oder nicht unterstützte
+     * Bereiche (404) ergeben ein leeres Array; bei 401 wird einzeln mit neuem Token wiederholt.
+     *
+     * @param array<string,string> $paths
+     * @return array<string,array>
+     */
+    private function ApiParallel(array $paths): array
+    {
+        $headers = [
+            'Authorization: Bearer ' . $this->GetAccessToken(),
+            'vcc-api-key: ' . trim($this->ReadPropertyString('ApiKey')),
+            'Accept: application/json'
+        ];
+        $requests = [];
+        foreach ($paths as $key => $path) {
+            $requests[$key] = ['GET', self::API . $path, $headers, null];
+        }
+
+        $out = [];
+        foreach ($this->HttpRequestMulti($requests) as $key => [$code, $raw]) {
+            $out[$key] = $code === 401
+                ? $this->Optional(fn () => $this->Api($paths[$key]))
+                : $this->Optional(fn () => $this->ParseApi($code, $raw, $paths[$key]));
+        }
+        return $out;
+    }
+
+    /** Antwort der Volvo-API auswerten. */
+    private function ParseApi(int $code, string $raw, string $path): array
+    {
         if ($code === 401 && stripos($raw, 'VCC-API-KEY') !== false) {
             throw new Exception('VCC API Key ungültig – bitte den Primary Key aus derselben Volvo-Anwendung eintragen wie Client-ID und Client-Secret.');
         }
@@ -674,35 +765,99 @@ class Volvo extends IPSModule
     /** @return array{0:int,1:string} */
     protected function HttpRequest(string $method, string $url, array $headers, ?string $body): array
     {
+        $ch = self::Curl($method, $url, $headers, $body);
+        $raw = curl_exec($ch);
+        $result = $this->Finish($method, $url, $ch, $raw === false ? false : (string) $raw);
+        return $result;
+    }
+
+    /**
+     * Mehrere Anfragen gleichzeitig (curl_multi). Für Tests überschreibbar.
+     *
+     * @param array<string,array{0:string,1:string,2:array,3:?string}> $requests
+     * @return array<string,array{0:int,1:string}>
+     */
+    protected function HttpRequestMulti(array $requests): array
+    {
+        if (count($requests) < 2 || !function_exists('curl_multi_init')) {
+            $out = [];
+            foreach ($requests as $key => [$method, $url, $headers, $body]) {
+                $out[$key] = $this->HttpRequest($method, $url, $headers, $body);
+            }
+            return $out;
+        }
+
+        $multi = curl_multi_init();
+        $handles = [];
+        foreach ($requests as $key => [$method, $url, $headers, $body]) {
+            $handles[$key] = self::Curl($method, $url, $headers, $body);
+            curl_multi_add_handle($multi, $handles[$key]);
+        }
+        do {
+            $status = curl_multi_exec($multi, $running);
+            if ($running > 0) {
+                curl_multi_select($multi, 1.0);
+            }
+        } while ($running > 0 && $status === CURLM_OK);
+
+        // Ergebnis je Anfrage (Verbindungsfehler stehen nur hier, nicht in curl_error)
+        $results = [];
+        while (($info = curl_multi_info_read($multi)) !== false) {
+            $results[spl_object_id($info['handle'])] = $info['result'];
+        }
+
+        $out = [];
+        foreach ($handles as $key => $ch) {
+            $result = $results[spl_object_id($ch)] ?? CURLE_OK;
+            $raw = $result === CURLE_OK ? (string) curl_multi_getcontent($ch) : false;
+            if ($raw === false) {
+                $this->SendDebug('Fehler', curl_strerror($result), 0);
+            }
+            $out[$key] = $this->Finish($requests[$key][0], $requests[$key][1], $ch, $raw);
+            curl_multi_remove_handle($multi, $ch);
+        }
+        curl_multi_close($multi);
+        return $out;
+    }
+
+    private static function Curl(string $method, string $url, array $headers, ?string $body): CurlHandle
+    {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CUSTOMREQUEST  => $method,
             CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_TIMEOUT        => 30
+            CURLOPT_TIMEOUT        => 30,
+            // Nur verschlüsselt und mit geprüftem Zertifikat
+            CURLOPT_PROTOCOLS      => CURLPROTO_HTTPS,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_ENCODING       => ''      // gzip annehmen
         ]);
         if ($body !== null) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
         }
+        return $ch;
+    }
 
-        $raw = curl_exec($ch);
+    /** @return array{0:int,1:string} */
+    private function Finish(string $method, string $url, CurlHandle $ch, string|false $raw): array
+    {
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
 
         // Fahrgestellnummer und Tokens nicht im Debug zeigen
         $shown = preg_replace('#/vehicles/[A-Z0-9]{17}#', '/vehicles/***', preg_replace('#\?.*$#', '', $url));
         $this->SendDebug($method, $shown . ' -> HTTP ' . $code, 0);
 
         if ($raw === false) {
-            throw new Exception('Verbindungsfehler: ' . $error);
+            throw new Exception('Verbindungsfehler: ' . (curl_error($ch) ?: 'keine Antwort'));
         }
         if (strpos($url, 'volvoid') === false) {
-            $this->SendDebug('Antwort', mb_substr(preg_replace('#[A-Z0-9]{17}#', '***', (string) $raw), 0, 1500), 0);
+            $this->SendDebug('Antwort', mb_substr(preg_replace('#[A-Z0-9]{17}#', '***', $raw), 0, 1500), 0);
         }
 
-        return [$code, (string) $raw];
+        return [$code, $raw];
     }
 
     // =================================================================
@@ -725,40 +880,15 @@ class Volvo extends IPSModule
         return $url !== '' ? rtrim($url, '/') . self::HOOK : '';
     }
 
-    private function RegisterHook(string $hook): void
-    {
-        $ids = IPS_GetInstanceListByModuleID(self::WEBHOOK_GUID);
-        if (count($ids) === 0) {
-            return;
-        }
-
-        $hooks = json_decode(IPS_GetProperty($ids[0], 'Hooks'), true) ?: [];
-        foreach ($hooks as $index => $entry) {
-            if ($entry['Hook'] === $hook) {
-                if ($entry['TargetID'] === $this->InstanceID) {
-                    return;
-                }
-                $hooks[$index]['TargetID'] = $this->InstanceID;
-                IPS_SetProperty($ids[0], 'Hooks', json_encode($hooks));
-                IPS_ApplyChanges($ids[0]);
-                return;
-            }
-        }
-
-        $hooks[] = ['Hook' => $hook, 'TargetID' => $this->InstanceID];
-        IPS_SetProperty($ids[0], 'Hooks', json_encode($hooks));
-        IPS_ApplyChanges($ids[0]);
-    }
-
     private static function HookPage(string $title, string $text, bool $ok): string
     {
         $color = $ok ? '#2ecc71' : '#e74c3c';
         return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-            . '<title>Volvo – ' . htmlspecialchars($title) . '</title></head>'
+            . '<title>Volvo – ' . htmlspecialchars($title, ENT_QUOTES) . '</title></head>'
             . '<body style="font-family:Segoe UI,Roboto,Arial,sans-serif;background:#1e2227;color:#eee;display:flex;'
             . 'align-items:center;justify-content:center;height:100vh;margin:0">'
             . '<div style="text-align:center;padding:24px"><div style="font-size:44px;color:' . $color . '">' . ($ok ? '✓' : '✕') . '</div>'
-            . '<h2 style="margin:8px 0">' . htmlspecialchars($title) . '</h2><p style="opacity:.8">' . htmlspecialchars($text) . '</p></div>'
+            . '<h2 style="margin:8px 0">' . htmlspecialchars($title, ENT_QUOTES) . '</h2><p style="opacity:.8">' . htmlspecialchars($text, ENT_QUOTES) . '</p></div>'
             . '</body></html>';
     }
 
@@ -796,9 +926,9 @@ class Volvo extends IPSModule
         $lon = (float) $coords[0];
         $lat = (float) $coords[1];
 
-        $this->MaintainOptional('Latitude', 'Breitengrad', VARIABLETYPE_FLOAT, 'VOLVO.Coordinate', 50);
-        $this->MaintainOptional('Longitude', 'Längengrad', VARIABLETYPE_FLOAT, 'VOLVO.Coordinate', 51);
-        $this->MaintainOptional('MapLink', 'Standort auf Karte', VARIABLETYPE_STRING, '', 54);
+        $this->MaintainOptional('Latitude', 'Breitengrad', VARIABLETYPE_FLOAT, self::PValue('°', 6, 'location-dot'), 50);
+        $this->MaintainOptional('Longitude', 'Längengrad', VARIABLETYPE_FLOAT, self::PValue('°', 6, 'location-dot'), 51);
+        $this->MaintainOptional('MapLink', 'Standort auf Karte', VARIABLETYPE_STRING, self::PValue('', 0, 'map'), 54);
         $this->SetValue('Latitude', $lat);
         $this->SetValue('Longitude', $lon);
         $this->SetValue('MapLink', $this->MapUrl($lat, $lon));
@@ -806,7 +936,7 @@ class Volvo extends IPSModule
         // Zeitpunkt, zu dem Volvo diesen Standort ermittelt hat
         $stamp = strtotime((string) ($loc['properties']['timestamp'] ?? ''));
         if ($stamp !== false && $stamp > 0) {
-            $this->MaintainOptional('LocationTime', 'Standort vom', VARIABLETYPE_INTEGER, '~UnixTimestamp', 56);
+            $this->MaintainOptional('LocationTime', 'Standort vom', VARIABLETYPE_INTEGER, self::PDateTime(), 56);
             $this->SetValue('LocationTime', $stamp);
         }
 
@@ -820,8 +950,8 @@ class Volvo extends IPSModule
             return;
         }
         $meters = self::Distance($lat, $lon, $home[0], $home[1]);
-        $this->MaintainOptional('DistanceHome', 'Entfernung von zu Hause', VARIABLETYPE_FLOAT, 'VOLVO.KmDistance', 52);
-        $this->MaintainOptional('AtHome', 'Zu Hause', VARIABLETYPE_BOOLEAN, '~Presence', 53);
+        $this->MaintainOptional('DistanceHome', 'Entfernung von zu Hause', VARIABLETYPE_FLOAT, self::PValue(' km', 1, 'route'), 52);
+        $this->MaintainOptional('AtHome', 'Zu Hause', VARIABLETYPE_BOOLEAN, self::PBool('Unterwegs', 'Zu Hause', 'house', 0x2ECC71), 53);
         $this->SetValue('DistanceHome', round($meters / 1000, 1));
         $this->SetValue('AtHome', $meters <= max(20, $this->ReadPropertyInteger('HomeRadius')));
     }
@@ -837,6 +967,17 @@ class Volvo extends IPSModule
             default:
                 return sprintf('https://www.openstreetmap.org/?mlat=%.6F&mlon=%.6F#map=17/%.6F/%.6F', $lat, $lon, $lat, $lon);
         }
+    }
+
+    /** Instanz „Volvo Karte“, die dieses Fahrzeug zeigt (0 = keine). */
+    private function MapInstance(): int
+    {
+        foreach (IPS_GetInstanceListByModuleID(self::MAP_GUID) as $id) {
+            if ((int) @IPS_GetProperty($id, 'VolvoInstance') === $this->InstanceID) {
+                return $id;
+            }
+        }
+        return 0;
     }
 
     private function VehicleLabel(): string
@@ -866,8 +1007,8 @@ class Volvo extends IPSModule
         }
 
         $this->WriteAttributeInteger('GeocodeFailed', 0);
-        $this->WriteAttributeString('Address', json_encode(['lat' => round($lat, 6), 'lon' => round($lon, 6)] + $address));
-        $this->MaintainOptional('Address', 'Adresse', VARIABLETYPE_STRING, '', 55);
+        $this->WriteAttributeString('Address', (string) json_encode(['lat' => round($lat, 6), 'lon' => round($lon, 6)] + $address, JSON_INVALID_UTF8_SUBSTITUTE));
+        $this->MaintainOptional('Address', 'Adresse', VARIABLETYPE_STRING, self::PValue('', 0, 'location-dot'), 55);
         $this->SetValue('Address', self::GeocodeText($address));
     }
 
@@ -876,7 +1017,7 @@ class Volvo extends IPSModule
     {
         if (!$this->ReadPropertyBoolean('ShowAddress') || !$this->ReadPropertyBoolean('EnableLocation')) {
             if (@$this->GetIDForIdent('Address') !== false) {
-                $this->MaintainVariable('Address', 'Adresse', VARIABLETYPE_STRING, '', 55, false);
+                $this->MaintainVariable('Address', 'Adresse', VARIABLETYPE_STRING, self::PValue('', 0, 'location-dot'), 55, false);
             }
         }
         // Link sofort auf den gewählten Kartendienst umstellen
@@ -972,61 +1113,99 @@ class Volvo extends IPSModule
         }
     }
 
-    private function MaintainOptional(string $ident, string $name, int $type, string $profile, int $position): void
+    /** Variable erst anlegen, wenn das Fahrzeug den Wert liefert (Darstellung wird dabei aktualisiert). */
+    /**
+     * Variable nur schreiben, wenn sich der Wert wirklich ändert.
+     * Spart bei jedem Abruf Dutzende Schreibvorgänge samt Ereignissen und Nachrichten.
+     */
+    protected function SetValue(string $Ident, mixed $Value): bool
     {
-        if (@$this->GetIDForIdent($ident) === false) {
-            $this->MaintainVariable($ident, $name, $type, $profile, $position, true);
+        if (@$this->GetIDForIdent($Ident) !== false && $this->GetValue($Ident) === $Value) {
+            return true;
         }
+        return parent::SetValue($Ident, $Value);
     }
 
-    private function CreateProfiles(): void
+    private function MaintainOptional(string $ident, string $name, int $type, string|array $presentation, int $position): void
     {
-        $this->Profile('VOLVO.Percent', VARIABLETYPE_INTEGER, ' %', 'Battery', 0, 100);
-        $this->Profile('VOLVO.Km', VARIABLETYPE_INTEGER, ' km', 'Distance', 0, 0);
-        $this->Profile('VOLVO.Minutes', VARIABLETYPE_INTEGER, ' min', 'Clock', 0, 0);
-        $this->Profile('VOLVO.Liter', VARIABLETYPE_FLOAT, ' l', 'Drops', 0, 0);
-        $this->Profile('VOLVO.kWh', VARIABLETYPE_FLOAT, ' kWh', 'Electricity', 0, 0);
-
-        $this->Profile('VOLVO.KmDistance', VARIABLETYPE_FLOAT, ' km', 'Distance', 0, 0);
-        $this->Profile('VOLVO.Coordinate', VARIABLETYPE_FLOAT, '°', 'Distance', 0, 0);
-        IPS_SetVariableProfileDigits('VOLVO.Coordinate', 6);
-        $this->Profile('VOLVO.Closed', VARIABLETYPE_BOOLEAN, '', 'Window', 0, 0);
-        IPS_SetVariableProfileAssociation('VOLVO.Closed', false, 'Offen', '', 0xE74C3C);
-        IPS_SetVariableProfileAssociation('VOLVO.Closed', true, 'Geschlossen', '', 0x2ECC71);
-
-        $this->Profile('VOLVO.ChargingStatus', VARIABLETYPE_INTEGER, '', 'Electricity', 0, 0);
-        foreach ([
-            [0, 'Unbekannt', 0x7F8C8D], [1, 'Bereit', 0x95A5A6], [2, 'Lädt', 0x2ECC71], [3, 'Fertig geladen', 0x3498DB],
-            [4, 'Geplant', 0xF1C40F], [5, 'Smart Charging', 0x1ABC9C], [6, 'Fehler', 0xE74C3C], [7, 'Entlädt', 0xE67E22]
-        ] as [$v, $t, $c]) {
-            IPS_SetVariableProfileAssociation('VOLVO.ChargingStatus', $v, $t, '', $c);
+        $key = 'Maintained.' . $ident;
+        if (@$this->GetIDForIdent($ident) === false || $this->GetBuffer($key) === '') {
+            $this->MaintainVariable($ident, $name, $type, $presentation, $position, true);
+            $this->SetBuffer($key, '1');
         }
-    }
-
-    private function Profile(string $name, int $type, string $suffix, string $icon, float $min, float $max): void
-    {
-        if (!IPS_VariableProfileExists($name)) {
-            IPS_CreateVariableProfile($name, $type);
-        }
-        IPS_SetVariableProfileText($name, '', $suffix);
-        IPS_SetVariableProfileIcon($name, $icon);
-        if ($type === VARIABLETYPE_FLOAT) {
-            IPS_SetVariableProfileDigits($name, 1);
-        }
-        IPS_SetVariableProfileValues($name, $min, $max, 1);
     }
 
     private function CreateVariables(): void
     {
-        $this->RegisterVariableInteger('BatteryLevel', 'Akkustand', 'VOLVO.Percent', 1);
-        $this->RegisterVariableInteger('ElectricRange', 'Reichweite elektrisch', 'VOLVO.Km', 2);
-        $this->RegisterVariableInteger('ChargingStatus', 'Ladestatus', 'VOLVO.ChargingStatus', 3);
-        $this->RegisterVariableBoolean('CableConnected', 'Ladekabel angeschlossen', '~Switch', 4);
-        $this->RegisterVariableInteger('Odometer', 'Kilometerstand', 'VOLVO.Km', 22);
-        $this->RegisterVariableString('Model', 'Fahrzeug', '', 30);
-        $this->RegisterVariableFloat('BatteryCapacity', 'Akkugröße', 'VOLVO.kWh', 31);
-        $this->RegisterVariableInteger('LastUpdate', 'Letzte Aktualisierung', '~UnixTimestamp', 40);
-        $this->RegisterVariableString('LastError', 'Letzter Fehler', '', 41);
+        // Darstellungen (ab Symcon 8.0) statt eigener Variablenprofile
+        $this->RegisterVariableInteger('BatteryLevel', 'Akkustand', self::PBattery(), 1);
+        $this->RegisterVariableInteger('ElectricRange', 'Reichweite elektrisch', self::PValue(' km', 0, 'route'), 2);
+        $this->RegisterVariableInteger('ChargingStatus', 'Ladestatus', self::PEnum(self::CHARGING_OPTIONS, 'charging-station'), 3);
+        $this->RegisterVariableBoolean('CableConnected', 'Ladekabel angeschlossen', self::PBool('Nicht angeschlossen', 'Angeschlossen', 'plug', 0x2ECC71), 4);
+        $this->RegisterVariableInteger('Odometer', 'Kilometerstand', self::PValue(' km', 0, 'gauge') + ['THOUSANDS_SEPARATOR' => '.'], 22);
+        $this->RegisterVariableString('Model', 'Fahrzeug', self::PValue('', 0, 'car'), 30);
+        $this->RegisterVariableFloat('BatteryCapacity', 'Akkugröße', self::PValue(' kWh', 1, 'battery-full'), 31);
+        $this->RegisterVariableInteger('LastUpdate', 'Letzte Aktualisierung', self::PDateTime(), 40);
+        $this->RegisterVariableString('LastError', 'Letzter Fehler', self::PValue('', 0, 'triangle-exclamation'), 41);
+    }
+
+    // =================================================================
+    // Darstellungen (Symcon >= 8.0)
+    // =================================================================
+
+    private static function PValue(string $suffix, int $digits, string $icon): array
+    {
+        $p = ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'ICON' => $icon];
+        if ($suffix !== '') {
+            $p['SUFFIX'] = $suffix;
+        }
+        if ($digits > 0) {
+            $p['DIGITS'] = $digits;
+        }
+        return $p;
+    }
+
+    private static function PBattery(): array
+    {
+        return ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'TEMPLATE' => VARIABLE_TEMPLATE_VALUE_PRESENTATION_BATTERY];
+    }
+
+    /** @param array $options Liste aus [Wert, Text, Symbol, Farbe] */
+    private static function PEnum(array $options, string $icon): array
+    {
+        $list = [];
+        foreach ($options as [$value, $caption, $optIcon, $color]) {
+            $list[] = ['Value' => $value, 'Caption' => $caption, 'IconActive' => $optIcon !== '', 'IconValue' => $optIcon, 'Color' => $color];
+        }
+        return ['PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION, 'ICON' => $icon, 'DISPLAY' => 2, 'OPTIONS' => json_encode($list, JSON_UNESCAPED_UNICODE)];
+    }
+
+    /** Nur lesbarer Ja/Nein-Wert mit Text und Farbe */
+    private static function PBool(string $false, string $true, string $icon, int $colorTrue, int $colorFalse = -1): array
+    {
+        return [
+            'PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION,
+            'ICON'         => $icon,
+            'OPTIONS'      => json_encode([
+                ['Value' => false, 'Caption' => $false, 'IconActive' => false, 'IconValue' => '', 'ColorActive' => $colorFalse !== -1, 'ColorValue' => $colorFalse],
+                ['Value' => true, 'Caption' => $true, 'IconActive' => false, 'IconValue' => '', 'ColorActive' => $colorTrue !== -1, 'ColorValue' => $colorTrue]
+            ], JSON_UNESCAPED_UNICODE)
+        ];
+    }
+
+    private static function PDateTime(): array
+    {
+        return ['PRESENTATION' => VARIABLE_PRESENTATION_DATE_TIME, 'DATE' => 1, 'MONTH_TEXT' => false, 'DAY_OF_THE_WEEK' => false, 'TIME' => 1];
+    }
+
+    private static function ChargingText(int $status): string
+    {
+        foreach (self::CHARGING_OPTIONS as [$value, $text]) {
+            if ($value === $status) {
+                return $text;
+            }
+        }
+        return '';
     }
 }
 

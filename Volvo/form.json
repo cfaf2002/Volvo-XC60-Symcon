@@ -89,7 +89,7 @@
                 {
                     "type": "Select",
                     "name": "MapService",
-                    "caption": "Standort-Link öffnet",
+                    "caption": "Tippen auf den Standort öffnet",
                     "options": [
                         {
                             "caption": "OpenStreetMap",
@@ -102,6 +102,10 @@
                         {
                             "caption": "Apple Karten",
                             "value": 2
+                        },
+                        {
+                            "caption": "Kachel „Volvo Karte“ (in der Visualisierung)",
+                            "value": 3
                         }
                     ]
                 },
@@ -111,7 +115,7 @@
                 },
                 {
                     "type": "Label",
-                    "caption": "Die Adresse wird nur nachgeschlagen, wenn sich das Auto mehr als 30 m bewegt hat; dazu geht die Position an nominatim.openstreetmap.org. In der Kachel steht sie statt der Entfernung, ein Tipp darauf öffnet den Standort im gewählten Kartendienst (auf dem Handy in der Karten-App)."
+                    "caption": "Die Adresse wird nur nachgeschlagen, wenn sich das Auto mehr als 30 m bewegt hat; dazu geht die Position an nominatim.openstreetmap.org. In der Kachel steht sie statt der Entfernung. Ein Tipp darauf öffnet die Kachel „Volvo Karte“ (ab Symcon 8.2, sofern eine Karten-Instanz für dieses Fahrzeug existiert) oder den gewählten Kartendienst – auf dem Handy in der Karten-App."
                 }
             ]
         },
@@ -119,6 +123,25 @@
             "type": "ExpansionPanel",
             "caption": "Kachel",
             "items": [
+                {
+                    "type": "Select",
+                    "name": "TileTheme",
+                    "caption": "Farbschema der Kachel",
+                    "options": [
+                        {
+                            "caption": "Symcon-Design (Farben der Visualisierung)",
+                            "value": 0
+                        },
+                        {
+                            "caption": "Dunkel",
+                            "value": 1
+                        },
+                        {
+                            "caption": "Hell",
+                            "value": 2
+                        }
+                    ]
+                },
                 {
                     "type": "SelectFile",
                     "name": "TileBackground",

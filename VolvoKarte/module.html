@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 Armin Frohwerk · SPDX-License-Identifier: MIT -->
 <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; overflow: hidden; }
@@ -46,7 +47,7 @@
     .vm-ctrl { position: absolute; top: 56px; right: 10px; display: flex; flex-direction: column; gap: 6px; }
     .vm-btn { border: 0; border-radius: 9px; min-width: 34px; padding: 7px 10px; font: inherit; font-size: 12px; font-weight: 600;
               cursor: pointer; background: rgba(20,22,26,.75); color: #fff; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-    .vm-btn.on { background: #2e86de; }
+    .vm-btn.on { background: var(--accent-color, #2e86de); }   /* Akzentfarbe der Visualisierung */
     .vm-btn.big { font-size: 16px; padding: 4px 0; }
     .vm-range { display: none; flex-direction: column; gap: 6px; margin-top: 4px; }
     .vm.track .vm-range { display: flex; }

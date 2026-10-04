@@ -6,7 +6,8 @@ declare(strict_types=1);
  * Adresse zu einer Position über OpenStreetMap (Nominatim) nachschlagen.
  * Wird von „Volvo Fahrzeug“ und „Volvo Karte“ gemeinsam genutzt.
  *
- * Autor: Armin Frohwerk
+ * Copyright (c) 2026 Armin Frohwerk
+ * SPDX-License-Identifier: MIT
  */
 trait VolvoGeocoder
 {
@@ -74,14 +75,17 @@ trait VolvoGeocoder
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 10,
             CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_PROTOCOLS      => CURLPROTO_HTTPS,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_ENCODING       => '',
             // Nominatim verlangt eine aussagekräftige Kennung
             CURLOPT_USERAGENT      => 'IP-Symcon Volvo (github.com/cfaf2002/Volvo-XC60-Symcon)',
             CURLOPT_HTTPHEADER     => ['Accept: application/json']
         ]);
         $raw = curl_exec($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
         if ($raw === false || $code !== 200) {
             return null;
         }

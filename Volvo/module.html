@@ -1,7 +1,21 @@
+<!-- Copyright (c) 2026 Armin Frohwerk · SPDX-License-Identifier: MIT -->
 <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; }
-    body { font-family: 'Poppins', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+    body { font-family: 'Poppins', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased;
+           /* Farbschema „Symcon-Design“: Schrift- und Akzentfarbe der gewählten Visualisierung */
+           color: var(--content-color, inherit); --accent: var(--accent-color, #2e86de); }
+    /* Feste Farbschemas (Eigenschaft „Farbschema“ der Instanz) */
+    body.theme-dark  { color: #eef1f4; --accent: #2e86de; background: linear-gradient(180deg, #23262b, #1a1c20); }
+    body.theme-light { color: #1f2a33; --accent: #1f6fb8; background: linear-gradient(180deg, #f6f8fa, #e9eef2); }
+    body.theme-light .vx { --line: rgba(31,42,51,.14); --muted: rgba(31,42,51,.62); }
+    a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* Bewegung sparen: auf Wunsch des Systems und solange die Kachel nicht sichtbar ist */
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+    body.paused *, body.paused *::before, body.paused *::after { animation-play-state: paused !important; }
 
     /* Hintergrundbild (optional) */
     .vx-bg { position: fixed; inset: 0; z-index: -2; background: center / cover no-repeat; display: none; }
@@ -80,7 +94,7 @@
     /* Standort zweizeilig: Straße als Link, darunter PLZ/Ort */
     .vx-value.loc { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; line-height: 1.25; }
     .vx-value.loc a, .vx-value.loc small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .vx-value.loc a { text-decoration: underline; text-decoration-style: dotted; text-decoration-thickness: 1px;
+    .vx-value.loc a { color: var(--accent); text-decoration: underline; text-decoration-style: dotted; text-decoration-thickness: 1px;
                       text-underline-offset: 3px; border-bottom: 0; }
     .vx-value.loc small { margin-left: 0; font-size: .78em; }
 
@@ -225,6 +239,19 @@
 
 <script>
     const $ = (id) => document.getElementById(id);
+
+    /** Wert mit kleinem Zusatz setzen – nur als Text, nie als HTML */
+    function setValue(el, main, small) {
+        el.textContent = main;
+        if (small) {
+            const sm = document.createElement('small');
+            sm.textContent = small;
+            el.appendChild(sm);
+        }
+    }
+
+    // Animationen anhalten, solange die Kachel nicht zu sehen ist
+    document.addEventListener('visibilitychange', () => document.body.classList.toggle('paused', document.hidden));
     const fmt = (n, d = 0) => Number(n).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
     const STATUS_COLOR = { 0: '#7f8c8d', 1: '#95a5a6', 2: '#2ecc71', 3: '#3498db', 4: '#f1c40f', 5: '#1abc9c', 6: '#e74c3c', 7: '#e67e22' };
 
@@ -239,6 +266,11 @@
     function handleMessage(data) {
         const s = JSON.parse(data);
         const root = $('root');
+
+        if (s.theme) {
+            document.body.classList.toggle('theme-dark', s.theme === 'dark');
+            document.body.classList.toggle('theme-light', s.theme === 'light');
+        }
 
         if (s.bg) {
             const has = !!s.bg.image;
@@ -295,18 +327,16 @@
         let charge = statusText;
         if (s.status === 2 && s.timeLeft) {
             const h = Math.floor(s.timeLeft / 60), m = s.timeLeft % 60;
-            charge = 'Lädt<small>noch ' + (h > 0 ? h + ' h ' : '') + m + ' min' + (s.target ? ' bis ' + s.target + ' %' : '') + '</small>';
-            $('charge').innerHTML = charge;
+            setValue($('charge'), 'Lädt', 'noch ' + (h > 0 ? h + ' h ' : '') + m + ' min' + (s.target ? ' bis ' + s.target + ' %' : ''));
         } else {
-            $('charge').innerHTML = charge + (s.target && s.target < 100 ? '<small>Ziel ' + s.target + ' %</small>' : '');
+            setValue($('charge'), charge, s.target && s.target < 100 ? 'Ziel ' + s.target + ' %' : '');
         }
 
         // Reichweite
         const parts = [];
         if (s.rangeE !== null && s.rangeE !== undefined) parts.push(fmt(s.rangeE) + ' km');
-        let rr = parts.join('');
-        if (s.rangeFuel !== null && s.rangeFuel !== undefined) rr += '<small>Tank ' + fmt(s.rangeFuel) + ' km</small>';
-        $('rangeRow').innerHTML = rr || '–';
+        const fuelRange = (s.rangeFuel !== null && s.rangeFuel !== undefined) ? 'Tank ' + fmt(s.rangeFuel) + ' km' : '';
+        setValue($('rangeRow'), parts.join('') || (fuelRange ? '' : '–'), fuelRange);
 
         // Geöffnet (nur wenn etwas offen ist)
         const open = s.openParts && s.openParts !== 'Alles geschlossen';
@@ -328,9 +358,13 @@
                 text = s.atHome ? 'Zu Hause' : (s.distance !== null && s.distance !== undefined ? fmt(s.distance, 1) + ' km entfernt' : 'Karte');
             }
             const link = document.createElement('a');
-            link.href = s.mapLink; link.target = '_blank'; link.rel = 'noopener';
+            link.href = s.mapLink; link.target = '_blank'; link.rel = 'noopener noreferrer';
             link.textContent = text;
             link.title = title ? title + ' – auf Karte öffnen' : 'Auf Karte öffnen';
+            // Kachel „Volvo Karte“ direkt in der Visualisierung öffnen (openObject ab Symcon 8.2)
+            if (s.mapObject > 0 && typeof openObject === 'function') {
+                link.addEventListener('click', (e) => { e.preventDefault(); openObject(s.mapObject); });
+            }
             const loc = $('location');
             loc.textContent = '';
             loc.appendChild(link);

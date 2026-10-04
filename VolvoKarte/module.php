@@ -1,5 +1,10 @@
 <?php
 
+/**
+ * Copyright (c) 2026 Armin Frohwerk
+ * SPDX-License-Identifier: MIT
+ */
+
 declare(strict_types=1);
 
 require_once __DIR__ . '/../libs/VolvoGeocoder.php';
@@ -13,17 +18,20 @@ require_once __DIR__ . '/../libs/VolvoGeocoder.php';
  *
  * Autor: Armin Frohwerk
  */
-class VolvoKarte extends IPSModule
+class VolvoKarte extends IPSModuleStrict
 {
     use VolvoGeocoder;
 
     private const LOCATION_CONTROL_GUID = '{45E97A63-F870-408A-B259-2933F7EABF74}';
+    /** JSON so einbetten, dass kein Wert das Skript der Kachel beenden kann */
+    private const TILE_JSON = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE
+        | JSON_INVALID_UTF8_SUBSTITUTE;   // kaputte Zeichen aus Fremddaten ersetzen statt Kachel abbrechen
     private const MIN_MOVE_METERS = 30;     // kleinere Sprünge sind GPS-Rauschen
     private const MAX_POINTS = 5000;
     private const GEOCODE_RETRY = 300;      // nach Fehler frühestens nach 5 Minuten erneut
     private const MARKER_MAX_PX = 256;      // hochgeladene Bilder werden auf diese Größe verkleinert
 
-    public function Create()
+    public function Create(): void
     {
         parent::Create();
 
@@ -52,15 +60,16 @@ class VolvoKarte extends IPSModule
         $this->SetVisualizationType(1);
     }
 
-    public function ApplyChanges()
+    public function ApplyChanges(): void
     {
         parent::ApplyChanges();
 
         $this->RegisterMessage(0, IPS_KERNELSTARTED);
 
-        $this->MaintainVariable('Address', 'Adresse', 3, '', 1, $this->ReadPropertyBoolean('ShowAddress'));
-        if ($this->ReadPropertyBoolean('ShowAddress') && ($vid = @$this->GetIDForIdent('Address'))) {
-            SetValueString($vid, $this->GetAddress());
+        $this->MaintainVariable('Address', 'Adresse', VARIABLETYPE_STRING,
+            ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'ICON' => 'location-dot'], 1, $this->ReadPropertyBoolean('ShowAddress'));
+        if ($this->ReadPropertyBoolean('ShowAddress')) {
+            $this->SetValue('Address', $this->GetAddress());
         }
         $this->BuildMarkerCache();
 
@@ -92,7 +101,7 @@ class VolvoKarte extends IPSModule
         }
     }
 
-    public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
+    public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
     {
         if ($Message === IPS_KERNELSTARTED) {
             $this->ApplyChanges();
@@ -161,15 +170,22 @@ class VolvoKarte extends IPSModule
 
     public function GetVisualizationTile(): string
     {
-        $html = file_get_contents(__DIR__ . '/module.html');
-        return $html . '<script>handleMessage(' . json_encode(json_encode($this->TileData())) . ');</script>';
+        $html = (string) file_get_contents(__DIR__ . '/module.html');
+        $this->SetBuffer('TileHash', '');
+        return $html . '<script>handleMessage(' . json_encode(json_encode($this->TileData(), self::TILE_JSON), self::TILE_JSON) . ');</script>';
     }
 
     private function PushTile(): void
     {
-        if (method_exists($this, 'UpdateVisualizationValue')) {
-            $this->UpdateVisualizationValue(json_encode($this->TileData()));
+        $json = json_encode($this->TileData(), self::TILE_JSON);
+
+        // Nur senden, wenn sich etwas geändert hat (der Verlauf kann einige tausend Punkte haben)
+        $hash = md5($json);
+        if ($this->GetBuffer('TileHash') === $hash) {
+            return;
         }
+        $this->SetBuffer('TileHash', $hash);
+        $this->UpdateVisualizationValue($json);
     }
 
     private function TileData(): array
@@ -250,11 +266,10 @@ class VolvoKarte extends IPSModule
 
     private function StoreAddress(array $address): void
     {
-        $this->WriteAttributeString('Address', json_encode($address));
+        $this->WriteAttributeString('Address', (string) json_encode($address, JSON_INVALID_UTF8_SUBSTITUTE));
         $this->WriteAttributeInteger('GeocodeFailed', 0);
-        $id = @$this->GetIDForIdent('Address');
-        if ($id) {
-            SetValueString($id, $this->GetAddress());
+        if (@$this->GetIDForIdent('Address') !== false) {
+            $this->SetValue('Address', $this->GetAddress());
         }
     }
 
@@ -355,8 +370,6 @@ class VolvoKarte extends IPSModule
             imagepng($out, null, 9);
             $raw = (string) ob_get_clean();
             $mime = 'image/png';
-            imagedestroy($img);
-            imagedestroy($out);
         }
 
         $this->WriteAttributeString('MarkerCache', 'data:' . $mime . ';base64,' . base64_encode($raw));

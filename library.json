@@ -4,9 +4,9 @@
     "name": "Volvo",
     "url": "https://github.com/cfaf2002/Volvo-XC60-Symcon",
     "compatibility": {
-        "version": "2.5"
+        "version": "8.2"
     },
-    "version": "2.5",
-    "build": 19,
-    "date": 1790809200
+    "version": "3.0",
+    "build": 21,
+    "date": 1791064800
 }
