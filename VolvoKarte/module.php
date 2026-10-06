@@ -46,6 +46,7 @@ class VolvoKarte extends IPSModuleStrict
         $this->RegisterPropertyString('MarkerImage', '');
         $this->RegisterPropertyBoolean('MarkerRound', true);
         $this->RegisterPropertyInteger('MarkerSize', 56);
+        $this->RegisterPropertyInteger('TileTheme', 0);         // 0 = Symcon-Design, 1 = Dunkel, 2 = Hell
 
         $this->RegisterAttributeString('History', '[]');
         $this->RegisterAttributeInteger('Watched', 0);
@@ -170,7 +171,7 @@ class VolvoKarte extends IPSModuleStrict
 
     public function GetVisualizationTile(): string
     {
-        $html = (string) file_get_contents(__DIR__ . '/module.html');
+        $html = (string) file_get_contents(__DIR__ . '/tile.html');
         $this->SetBuffer('TileHash', '');
         return $html . '<script>handleMessage(' . json_encode(json_encode($this->TileData(), self::TILE_JSON), self::TILE_JSON) . ');</script>';
     }
@@ -208,6 +209,7 @@ class VolvoKarte extends IPSModuleStrict
             'track'       => $this->ReadPropertyBoolean('RecordHistory') ? $this->ReadHistory() : null,
             'zoom'        => max(3, min(19, $this->ReadPropertyInteger('Zoom'))),
             'dark'        => $this->ReadPropertyBoolean('DarkMap'),
+            'theme'       => max(0, min(2, $this->ReadPropertyInteger('TileTheme'))),
             'model'       => $model,
             'soc'         => $value('BatteryLevel'),
             'atHome'      => $value('AtHome'),

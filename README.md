@@ -2,19 +2,19 @@
 
 [![IP-Symcon ab 8.2](https://img.shields.io/badge/IP--Symcon-ab_8.2-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-![Modul-Version 3.0](https://img.shields.io/badge/Modul--Version-3.0-informational.svg)
+[![Modul-Version 3.1 (Build 22)](https://img.shields.io/badge/Modul--Version-3.1_(Build_22)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/Volvo-XC60-Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/Volvo-XC60-Symcon/actions/workflows/tests.yml)
-![PHP 8.5](https://img.shields.io/badge/PHP-8.5-777bb4.svg?logo=php&logoColor=white)
+[![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
-[![Darstellungen statt Profile](https://img.shields.io/badge/Variablen-Darstellungen-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/darstellungen/)
+[![Variablen: Darstellungen](https://img.shields.io/badge/Variablen-Darstellungen-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/darstellungen/)
 [![Kachel-Visualisierung: HTML-SDK](https://img.shields.io/badge/Kachel--Visualisierung-HTML--SDK-orange.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/html-sdk/)
-![Farbschema: Symcon-Design, Dunkel, Hell](https://img.shields.io/badge/Farbschema-Symcon--Design_%7C_Dunkel_%7C_Hell-blueviolet.svg)
-[![Volvo Cars API](https://img.shields.io/badge/API-Volvo_Cars_Developer_Platform-1f3a5f.svg)](https://developer.volvocars.com/)
-![OAuth2 mit PKCE](https://img.shields.io/badge/Anmeldung-OAuth2_%2B_PKCE-red.svg)
-![Nur Leserechte](https://img.shields.io/badge/Rechte-nur_lesen-brightgreen.svg)
-[![Karte: OpenStreetMap](https://img.shields.io/badge/Karte-OpenStreetMap-7ebc6f.svg)](https://www.openstreetmap.org/copyright)
+[![Farbschema: Symcon-Design, Dunkel, Hell](https://img.shields.io/badge/Farbschema-Symcon--Design_%7C_Dunkel_%7C_Hell-blueviolet.svg)](STYLEGUIDE.md)
 ![Sprache: Deutsch](https://img.shields.io/badge/Sprache-Deutsch-blueviolet.svg)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-green.svg)](LICENSE)
+[![Cloud: Volvo Cars Developer Platform](https://img.shields.io/badge/Cloud-Volvo_Cars_Developer_Platform-lightgrey.svg)](https://developer.volvocars.com/)
+[![Karte: OpenStreetMap](https://img.shields.io/badge/Karte-OpenStreetMap-lightgrey.svg)](https://www.openstreetmap.org/copyright)
+![Anmeldung: OAuth2 mit PKCE](https://img.shields.io/badge/Anmeldung-OAuth2_%2B_PKCE-red.svg)
+![Nur Leserechte](https://img.shields.io/badge/Rechte-nur_lesen-brightgreen.svg)
 
 Modul zum Auslesen eines **Volvo** über die offiziellen Schnittstellen der
 [Volvo Cars Developer Platform](https://developer.volvocars.com/) (Connected Vehicle API und Energy API).
@@ -199,7 +199,8 @@ Eigene Kachel mit einer **OpenStreetMap-Karte**, die den Standort aus der Volvo-
 - Eine Infoleiste unter der Karte: **Straße mit Hausnummer** (bei Geschäften, Parkhäusern usw. auch deren **Name**),
   darunter **PLZ und Ort**, „Zu Hause“ bzw. Entfernung, „steht seit …“ und der Akkustand.
 - Bedienung: ziehen, Mausrad bzw. zwei Finger zum Zoomen, Doppelklick; **+ / −** auf großen Kacheln.
-- Dunkle oder helle Karte (Schalter in der Instanz). Aktive Knöpfe nehmen die Akzentfarbe der Visualisierung an.
+- **Farbschema der Kachel** (unter „Darstellung“): Symcon-Design (Farben der Visualisierung), Dunkel oder Hell – wie bei der Fahrzeug-Kachel.
+  Fahrzeug, Verlauf und aktive Knöpfe nehmen die Akzentfarbe an. Unabhängig davon lässt sich die Karte selbst dunkel oder hell zeigen.
 
 **Adresse (per Schalter)**
 - **„Straße und Ort unter der Karte anzeigen“** (Standard: an). Die Adresse wird bei OpenStreetMap (Nominatim) nachgeschlagen –
@@ -307,14 +308,16 @@ VOLVO_Logout(int $InstanzID)
 
 | Pfad | Inhalt |
 |---|---|
-| `Volvo/` | Instanz „Volvo Fahrzeug“: Anmeldung, Abruf, Variablen und Kachel (`module.html`) |
-| `VolvoKarte/` | Instanz „Volvo Karte“: Kartenkachel, Verlauf, Adresse und Fahrzeugsymbol |
+| `Volvo/` | Instanz „Volvo Fahrzeug“: Anmeldung, Abruf, Variablen und Kachel (`tile.html`) |
+| `VolvoKarte/` | Instanz „Volvo Karte“: Kartenkachel (`tile.html`), Verlauf, Adresse und Fahrzeugsymbol |
 | `libs/VolvoGeocoder.php` | Adresse über OpenStreetMap (Nominatim), von beiden Instanzen genutzt |
 | `tests/bootstrap.php` | Testumgebung ohne Symcon (bildet `IPSModuleStrict` nach) |
 | `tests/run.php` | Testsuite mit simulierter Volvo-Cloud (eigene Beispieldaten im Format der Volvo-API) |
 | `tests/stubs.php` | Ladetest mit den offiziellen [Symcon-Stubs](https://github.com/symcon/SymconStubs) |
+| `tests/structure.php` | Strukturprüfung nach Hausstil ([`STYLEGUIDE.md`](STYLEGUIDE.md)), in allen Repositorys gleich |
 
 ```
+php tests/structure.php
 php tests/run.php
 php tests/stubs.php <Pfad zu SymconStubs>
 ```
@@ -333,6 +336,7 @@ GitHub Actions (`.github/workflows/tests.yml`) prüft bei jedem Push mit PHP 8.3
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 3.1 | 22 | 06.10.2026 | Hausstil: Kacheln heißen `tile.html` und nutzen die gemeinsame Kachel-Grundlage (Systemschrift, Farben aus den Tokens, Zustandsfarben einheitlich); „Volvo Karte“ bekommt ebenfalls das Farbschema Symcon-Design / Dunkel / Hell; Knöpfe der Karte mindestens 36 px; `STYLEGUIDE.md`, Strukturprüfung und gemeinsamer Test-Workflow |
 | 3.0 | 21 | 04.10.2026 | Prüfung nachgeschärft: Variablen werden nur bei Änderung geschrieben, Anmelde-Seite nimmt nur einfache Texte an, ungültige Zeichen brechen die Kachel nicht mehr ab, Standort-Link in der Akzentfarbe des Symcon-Designs |
 | 3.0 | 20 | 04.10.2026 | Symcon-9.0-Technik: `IPSModuleStrict`, `RegisterHook` im Modul, Darstellungen statt Profile, `openObject` (Standort öffnet die Kachel „Volvo Karte“), Farbschema (Symcon-Design / Dunkel / Hell); Sicherheit: State einmalig und 15 Minuten gültig, Sicherheits-Header der Anmelde-Seite, nur HTTPS mit Zertifikatsprüfung, sichere Einbettung der Kachel-Daten; Geschwindigkeit: paralleler Abruf aller Bereiche, Kachel-Updates nur bei Änderung, Bilder verkleinert und zwischengespeichert, gzip; Tests, Ladetest und MIT-Lizenz |
 | 2.5 | 19 | 02.10.2026 | Volvo Karte: auf flachen, breiten Kacheln (z. B. Tablet) einzeilige, niedrige Infoleiste und kleinere Knöpfe – mehr Platz für die Karte |

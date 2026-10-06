@@ -231,16 +231,16 @@ check($td['mapObject'] === 950 && str_starts_with($td['mapLink'], 'https://www.o
 check($td['address']['street'] === 'Assar Gabrielssons väg 9' && $td['address']['city'] === '418 78 Göteborg', 'Kachel bekommt Adresse');
 check($td['soc'] === 87 && $td['model'] === 'XC60 2020' && str_contains($td['image'], 'w=800') && $td['locked'] === true && $td['atHome'] === true, 'Kachel-Daten vollständig');
 $m->p['TileTheme'] = 2;
-check(call($m, 'TileData')['theme'] === 'light', 'Farbschema „Hell“');
+check(call($m, 'TileData')['theme'] === 2, 'Farbschema „Hell“');
 $m->p['TileTheme'] = 0;
 $m->v['Model'] = '</script><img src=x onerror=alert(1)>';
 $html = $m->GetVisualizationTile();
 $err = $m->v['LastError']; $m->v['LastError'] = "Fehler \xC3\x28";
 check(str_contains($m->GetVisualizationTile(), 'handleMessage("{'), 'Ungültige Zeichen in Fehlertexten brechen die Kachel nicht ab');
 $m->v['LastError'] = $err;
-$own = substr_count((string) file_get_contents(__DIR__ . '/../Volvo/module.html'), '</script>');
+$own = substr_count((string) file_get_contents(__DIR__ . '/../Volvo/tile.html'), '</script>');
 check(!str_contains($html, '</script><img') && substr_count($html, '</script>') === $own + 1, 'Eingeschleustes HTML kann das Kachel-Skript nicht beenden');
-check(!str_contains((string) file_get_contents(__DIR__ . '/../Volvo/module.html'), '.innerHTML'), 'Kachel setzt Werte nur als Text (kein innerHTML)');
+check(!str_contains((string) file_get_contents(__DIR__ . '/../Volvo/tile.html'), '.innerHTML'), 'Kachel setzt Werte nur als Text (kein innerHTML)');
 
 echo "Symcon 9.0: Darstellungen\n";
 check($m->pres['ChargingStatus']['PRESENTATION'] === VARIABLE_PRESENTATION_ENUMERATION && str_contains($m->pres['ChargingStatus']['OPTIONS'], 'Lädt'), 'Ladestatus als Aufzählung');

@@ -1,11 +1,55 @@
-<!-- Copyright (c) 2026 Armin Frohwerk · SPDX-License-Identifier: MIT -->
+<!--
+    Kachel für das Modul "Volvo Karte" (IP-Symcon HTML-SDK)
+    Copyright (c) 2026 Armin Frohwerk · MIT-Lizenz (siehe LICENSE)
+    SPDX-License-Identifier: MIT
+
+    Aufbau:     Eigene kleine Karte aus OpenStreetMap-Kacheln (Web-Mercator) mit Fahrzeug, Zuhause und
+                optionalem Verlauf, darüber Infoleiste und Knöpfe.
+    Sicherheit: Texte nur per textContent; Kartenbilder ausschließlich von tile.openstreetmap.org (https).
+    Leistung:   Kartenbilder werden zwischengespeichert, gezeichnet wird nur bei Änderungen.
+-->
 <style>
+    /* ===== Hausstil cfaf2002 · Kachel-Grundlage v1 (siehe STYLEGUIDE.md) =====
+       Farbschema 0 = Symcon-Design (Farben der Visualisierung), 1 = Dunkel, 2 = Hell.
+       Modulspezifisch ist nur --brand (Akzent der festen Farbschemas). */
+    :root {
+        --brand: #2e86de;
+        --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --fg: var(--content-color, #eef3f7);
+        --accent: var(--accent-color, var(--brand));
+        --on-accent: #ffffff;
+        --muted: color-mix(in srgb, var(--fg) 65%, transparent);
+        --faint: color-mix(in srgb, var(--fg) 40%, transparent);
+        --line: color-mix(in srgb, var(--fg) 15%, transparent);
+        --surface: color-mix(in srgb, var(--fg) 7%, transparent);
+        --surface-hover: color-mix(in srgb, var(--fg) 12%, transparent);
+        --popup: var(--card-color, #232a33);
+        --ok: #34b36b;
+        --warn: #e2a63b;
+        --bad: #e5484d;
+        --info: #4b8ef0;
+        --off: #8796a5;
+        --radius-l: 14px;
+        --radius: 12px;
+        --radius-s: 8px;
+        --pill: 999px;
+        --gap: 8px;
+    }
+    html.theme-dark  { --fg: #eef3f7; --accent: var(--brand); --tile-bg: #1b2530; --popup: #232d39; }
+    html.theme-light { --fg: #1d2b36; --accent: var(--brand); --tile-bg: #e9eef3; --popup: #ffffff; }
+    html.theme-dark body, html.theme-light body { background: var(--tile-bg); }
+    html, body { font-family: var(--font); color: var(--fg); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+    /* ===== Ende Kachel-Grundlage ===== */
+
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; overflow: hidden; }
-    body { font-family: 'Poppins', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; }
 
     .vm { position: relative; height: 100vh; padding-top: 46px; }
-    .vm-map { position: absolute; inset: 46px 0 0; overflow: hidden; background: #2b2d30; border-radius: 0 0 10px 10px;
+    .vm-map { position: absolute; inset: 46px 0 0; overflow: hidden; background: var(--surface); border-radius: 0 0 10px 10px;
               touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
     .vm-map.drag { cursor: grabbing; }
     .vm-tiles { position: absolute; inset: 0; }
@@ -14,20 +58,20 @@
     .vm-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 
     /* Fahrzeug */
-    .vm-car { position: absolute; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: #2e86de;
-              border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(46,134,222,.25), 0 4px 10px rgba(0,0,0,.4);
+    .vm-car { position: absolute; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: var(--accent);
+              border: 3px solid #fff; box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent), 0 4px 10px rgba(0,0,0,.4);
               display: none; align-items: center; justify-content: center; pointer-events: none; }
     .vm-car.on { display: flex; }
     .vm-car svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     /* Eigenes Foto rund */
-    .vm-car.round { background: #2b2d30 center / cover no-repeat; }
+    .vm-car.round { background: var(--popup) center / cover no-repeat; }
     .vm-car.round img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
     /* Freigestelltes Bild (z. B. Volvo-Fahrzeugbild): steht auf dem Punkt */
     .vm-car.free { width: 0; height: 0; margin: 0; background: none; border: 0; box-shadow: none; }
     .vm-car.free img { position: absolute; left: 0; bottom: 2px; transform: translateX(-50%); max-width: none;
                        filter: drop-shadow(0 4px 6px rgba(0,0,0,.55)); }
     .vm-car.free .dot { position: absolute; left: -6px; top: -6px; width: 12px; height: 12px; border-radius: 50%;
-                        background: #2e86de; border: 2px solid #fff; box-shadow: 0 0 0 5px rgba(46,134,222,.3); }
+                        background: var(--accent); border: 2px solid #fff; box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 30%, transparent); }
 
     .vm-attr { position: absolute; right: 4px; bottom: 2px; font-size: 9px; color: #ccc; background: rgba(0,0,0,.45);
                padding: 1px 5px; border-radius: 4px; }
@@ -45,15 +89,15 @@
 
     /* Knöpfe */
     .vm-ctrl { position: absolute; top: 56px; right: 10px; display: flex; flex-direction: column; gap: 6px; }
-    .vm-btn { border: 0; border-radius: 9px; min-width: 34px; padding: 7px 10px; font: inherit; font-size: 12px; font-weight: 600;
+    .vm-btn { border: 0; border-radius: 9px; min-width: 36px; min-height: 36px; padding: 7px 10px; font: inherit; font-size: 12px; font-weight: 600;
               cursor: pointer; background: rgba(20,22,26,.75); color: #fff; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-    .vm-btn.on { background: var(--accent-color, #2e86de); }   /* Akzentfarbe der Visualisierung */
+    .vm-btn.on { background: var(--accent); color: var(--on-accent); }   /* Akzentfarbe */
     .vm-btn.big { font-size: 16px; padding: 4px 0; }
     .vm-range { display: none; flex-direction: column; gap: 6px; margin-top: 4px; }
     .vm.track .vm-range { display: flex; }
 
     .vm-hint { position: absolute; inset: 46px 0 0; display: none; align-items: center; justify-content: center; text-align: center;
-               padding: 20px; color: #ccc; font-size: 13px; background: #2b2d30; border-radius: 0 0 10px 10px; }
+               padding: 20px; color: var(--muted); font-size: 13px; background: var(--surface); border-radius: 0 0 10px 10px; }
     .vm-hint.on { display: flex; }
 
     @media (max-width: 460px) {
@@ -111,6 +155,13 @@
 </div>
 
 <script>
+    // Hausstil: Farbschema der Kachel (0 = Symcon-Design, 1 = Dunkel, 2 = Hell)
+    function applyTheme(theme) {
+        var root = document.documentElement;
+        root.classList.toggle('theme-dark', theme === 1);
+        root.classList.toggle('theme-light', theme === 2);
+    }
+
     // ------------------------------------------------------------------
     // Kleine Kartenanzeige auf Basis der OpenStreetMap-Kacheln (Web-Mercator)
     // ------------------------------------------------------------------
@@ -202,7 +253,7 @@
             const mpp = 156543.03392 * Math.cos(state.home.lat * Math.PI / 180) / Math.pow(2, view.z);
             const r = Math.max(4, state.home.r / mpp);
             out += '<circle cx="' + h.x.toFixed(1) + '" cy="' + h.y.toFixed(1) + '" r="' + r.toFixed(1) +
-                   '" fill="rgba(46,204,113,.14)" stroke="#2ecc71" stroke-width="1.5"/>';
+                   '" style="fill:color-mix(in srgb, var(--ok) 14%, transparent);stroke:var(--ok)" stroke-width="1.5"/>';
         }
 
         // Verlauf
@@ -210,9 +261,9 @@
         if (pts.length >= 2) {
             const sp = pts.map(p => toScreen(p[0], p[1]));
             out += '<polyline points="' + sp.map(p => p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ') +
-                   '" fill="none" stroke="#2e86de" stroke-width="3" stroke-opacity=".85" stroke-dasharray="6 6" stroke-linejoin="round"/>';
+                   '" fill="none" style="stroke:var(--accent)" stroke-width="3" stroke-opacity=".85" stroke-dasharray="6 6" stroke-linejoin="round"/>';
             sp.slice(0, -1).forEach(p => {
-                out += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="3.5" fill="#2e86de" stroke="#fff" stroke-width="1"/>';
+                out += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="3.5" style="fill:var(--accent)" stroke="#fff" stroke-width="1"/>';
             });
         }
         svg.innerHTML = out;
@@ -371,6 +422,7 @@
 
     function handleMessage(data) {
         state = JSON.parse(data);
+        if (state.theme !== undefined) applyTheme(state.theme);
         const root = $('root');
         root.classList.toggle('dark', !!state.dark);
         root.classList.toggle('track', Array.isArray(state.track));

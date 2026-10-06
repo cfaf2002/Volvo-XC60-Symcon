@@ -1,20 +1,53 @@
-<!-- Copyright (c) 2026 Armin Frohwerk · SPDX-License-Identifier: MIT -->
+<!--
+    Kachel für das Modul "Volvo Fahrzeug" (IP-Symcon HTML-SDK)
+    Copyright (c) 2026 Armin Frohwerk · MIT-Lizenz (siehe LICENSE)
+    SPDX-License-Identifier: MIT
+
+    Aufbau:     Kopfzeile (Ladestatus, Modell, Stand), Akku-Ring mit Ladeziel, Fahrzeugbild,
+                Sicherheits-Chips und Werteliste; optional eigenes Hintergrundbild.
+    Sicherheit: Alle Werte werden per textContent gesetzt, nie als HTML; Links nur mit https.
+    Leistung:   Keine externen Dateien; Animationen ruhen, solange die Kachel nicht sichtbar ist.
+-->
 <style>
+    /* ===== Hausstil cfaf2002 · Kachel-Grundlage v1 (siehe STYLEGUIDE.md) =====
+       Farbschema 0 = Symcon-Design (Farben der Visualisierung), 1 = Dunkel, 2 = Hell.
+       Modulspezifisch ist nur --brand (Akzent der festen Farbschemas). */
+    :root {
+        --brand: #2e86de;
+        --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --fg: var(--content-color, #eef3f7);
+        --accent: var(--accent-color, var(--brand));
+        --on-accent: #ffffff;
+        --muted: color-mix(in srgb, var(--fg) 65%, transparent);
+        --faint: color-mix(in srgb, var(--fg) 40%, transparent);
+        --line: color-mix(in srgb, var(--fg) 15%, transparent);
+        --surface: color-mix(in srgb, var(--fg) 7%, transparent);
+        --surface-hover: color-mix(in srgb, var(--fg) 12%, transparent);
+        --popup: var(--card-color, #232a33);
+        --ok: #34b36b;
+        --warn: #e2a63b;
+        --bad: #e5484d;
+        --info: #4b8ef0;
+        --off: #8796a5;
+        --radius-l: 14px;
+        --radius: 12px;
+        --radius-s: 8px;
+        --pill: 999px;
+        --gap: 8px;
+    }
+    html.theme-dark  { --fg: #eef3f7; --accent: var(--brand); --tile-bg: #1b2530; --popup: #232d39; }
+    html.theme-light { --fg: #1d2b36; --accent: var(--brand); --tile-bg: #e9eef3; --popup: #ffffff; }
+    html.theme-dark body, html.theme-light body { background: var(--tile-bg); }
+    html, body { font-family: var(--font); color: var(--fg); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+    /* ===== Ende Kachel-Grundlage ===== */
+
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; }
-    body { font-family: 'Poppins', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased;
-           /* Farbschema „Symcon-Design“: Schrift- und Akzentfarbe der gewählten Visualisierung */
-           color: var(--content-color, inherit); --accent: var(--accent-color, #2e86de); }
-    /* Feste Farbschemas (Eigenschaft „Farbschema“ der Instanz) */
-    body.theme-dark  { color: #eef1f4; --accent: #2e86de; background: linear-gradient(180deg, #23262b, #1a1c20); }
-    body.theme-light { color: #1f2a33; --accent: #1f6fb8; background: linear-gradient(180deg, #f6f8fa, #e9eef2); }
-    body.theme-light .vx { --line: rgba(31,42,51,.14); --muted: rgba(31,42,51,.62); }
-    a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-    /* Bewegung sparen: auf Wunsch des Systems und solange die Kachel nicht sichtbar ist */
-    @media (prefers-reduced-motion: reduce) {
-        *, *::before, *::after { animation: none !important; transition: none !important; }
-    }
+    /* Bewegung sparen, solange die Kachel nicht sichtbar ist */
     body.paused *, body.paused *::before, body.paused *::after { animation-play-state: paused !important; }
 
     /* Hintergrundbild (optional) */
@@ -22,17 +55,16 @@
     .vx-shade { position: fixed; inset: 0; z-index: -1; display: none;
                 background: linear-gradient(180deg, rgba(0,0,0,var(--dim)) 0%, rgba(0,0,0,calc(var(--dim) + .12)) 100%); }
     body.has-bg .vx-bg, body.has-bg .vx-shade { display: block; }
-    body.has-bg { color: #fff; }
-    body.has-bg .vx { --line: rgba(255,255,255,.16); --muted: rgba(255,255,255,.72); }
+    /* Auf dem Bild immer helle Schrift */
+    body.has-bg { --fg: #ffffff; --muted: color-mix(in srgb, #ffffff 72%, transparent);
+                  --line: color-mix(in srgb, #ffffff 16%, transparent); color: var(--fg); }
     body.has-bg .vx-panel { background: rgba(20,22,26,.38); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
                             border: 1px solid rgba(255,255,255,.1); border-radius: 16px; padding: clamp(12px, 2vh, 22px) clamp(14px, 2vw, 24px); }
     body.has-bg .vx-track { stroke: rgba(255,255,255,.18); }
 
     .vx {
-        --c: #95a5a6;       /* Farbe des Akkustands */
-        --s: #95a5a6;       /* Farbe des Ladestatus */
-        --line: rgba(127,127,127,.18);
-        --muted: rgba(127,127,127,.95);
+        --c: var(--off);    /* Farbe des Akkustands */
+        --s: var(--off);    /* Farbe des Ladestatus */
         height: 100vh;
         padding: 52px clamp(14px, 3vw, 40px) clamp(12px, 2vh, 24px);
         display: grid; grid-template-rows: auto 1fr; gap: clamp(8px, 2vh, 20px);
@@ -46,7 +78,7 @@
     .vx.charging .vx-dot { animation: pulse 1.6s ease-in-out infinite; }
     .vx-model { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .vx-updated { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
-    .vx-updated.err { color: #e74c3c; }
+    .vx-updated.err { color: var(--bad); }
 
     /* Hauptbereich */
     .vx-main { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -76,8 +108,8 @@
     .vx-chip { display: inline-flex; align-items: center; gap: 6px; font-size: clamp(11px, 1.6vmin, 13px); font-weight: 600;
                padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
     .vx-chip svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-    .vx-chip.ok { color: #2ecc71; border-color: color-mix(in srgb, #2ecc71 40%, transparent); }
-    .vx-chip.warn { color: #e67e22; border-color: color-mix(in srgb, #e67e22 45%, transparent); background: color-mix(in srgb, #e67e22 10%, transparent); }
+    .vx-chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+    .vx-chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); }
     .vx-chip.hide { display: none; }
 
     /* Werteliste */
@@ -238,6 +270,13 @@
 </div>
 
 <script>
+    // Hausstil: Farbschema der Kachel (0 = Symcon-Design, 1 = Dunkel, 2 = Hell)
+    function applyTheme(theme) {
+        var root = document.documentElement;
+        root.classList.toggle('theme-dark', theme === 1);
+        root.classList.toggle('theme-light', theme === 2);
+    }
+
     const $ = (id) => document.getElementById(id);
 
     /** Wert mit kleinem Zusatz setzen – nur als Text, nie als HTML */
@@ -253,7 +292,7 @@
     // Animationen anhalten, solange die Kachel nicht zu sehen ist
     document.addEventListener('visibilitychange', () => document.body.classList.toggle('paused', document.hidden));
     const fmt = (n, d = 0) => Number(n).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
-    const STATUS_COLOR = { 0: '#7f8c8d', 1: '#95a5a6', 2: '#2ecc71', 3: '#3498db', 4: '#f1c40f', 5: '#1abc9c', 6: '#e74c3c', 7: '#e67e22' };
+    const STATUS_COLOR = { 0: 'var(--off)', 1: 'var(--off)', 2: 'var(--ok)', 3: 'var(--info)', 4: 'var(--warn)', 5: 'var(--ok)', 6: 'var(--bad)', 7: 'var(--warn)' };
 
     function chip(id, show, ok, text, textId) {
         const el = $(id);
@@ -267,10 +306,7 @@
         const s = JSON.parse(data);
         const root = $('root');
 
-        if (s.theme) {
-            document.body.classList.toggle('theme-dark', s.theme === 'dark');
-            document.body.classList.toggle('theme-light', s.theme === 'light');
-        }
+        if (s.theme !== undefined) applyTheme(s.theme);
 
         if (s.bg) {
             const has = !!s.bg.image;
@@ -293,8 +329,8 @@
         // Akku-Ring: Farbe nach Füllstand
         const soc = (s.soc === null || s.soc === undefined) ? null : s.soc;
         $('soc').textContent = soc === null ? '–' : soc;
-        const color = soc === null ? '#95a5a6' : (soc >= 50 ? '#2ecc71' : (soc >= 20 ? '#f1c40f' : '#e74c3c'));
-        root.style.setProperty('--c', s.status === 2 ? '#2ecc71' : color);
+        const color = soc === null ? 'var(--off)' : (soc >= 50 ? 'var(--ok)' : (soc >= 20 ? 'var(--warn)' : 'var(--bad)'));
+        root.style.setProperty('--c', s.status === 2 ? 'var(--ok)' : color);
         $('arc').setAttribute('stroke-dashoffset', (245 * (1 - (soc || 0) / 100)).toFixed(1));
         $('range').textContent = (s.rangeE !== null && s.rangeE !== undefined) ? fmt(s.rangeE) + ' km elektrisch' : '';
 

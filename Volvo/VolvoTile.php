@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 /**
  * Eigene Kachel für die Kachel-Visualisierung (HTML-SDK).
- * Das HTML liegt in module.html; die Daten werden als JSON geschickt.
+ * Das HTML liegt in tile.html; die Daten werden als JSON geschickt.
  */
 trait VolvoTile
 {
@@ -19,7 +19,7 @@ trait VolvoTile
 
     public function GetVisualizationTile(): string
     {
-        $html = (string) file_get_contents(__DIR__ . '/module.html');
+        $html = (string) file_get_contents(__DIR__ . '/tile.html');
         $data = json_encode($this->TileData(true), self::TILE_JSON);
         $this->SetBuffer('TileHash', '');
         return $html . '<script>handleMessage(' . json_encode($data, self::TILE_JSON) . ');</script>';
@@ -80,7 +80,8 @@ trait VolvoTile
             'ok'          => $this->GetStatus() === 102,
             'error'       => (string) $get('LastError'),
             'updated'     => $lastUpdate > 0 ? date('H:i', $lastUpdate) : '–',
-            'theme'       => ['symcon', 'dark', 'light'][$this->ReadPropertyInteger('TileTheme')] ?? 'symcon'
+            // Farbschema: 0 = Symcon-Design, 1 = Dunkel, 2 = Hell
+            'theme'       => max(0, min(2, $this->ReadPropertyInteger('TileTheme')))
         ];
 
         if ($withBackground) {

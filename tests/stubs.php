@@ -82,6 +82,11 @@ try {
     ok(IPS_GetInstance($id)['InstanceStatus'] === 202, 'Mit Zugangsdaten Status 202 (Anmeldung nötig)');
     ok(str_starts_with(VOLVO_GetLoginUrl($id), 'https://volvoid.eu.volvocars.com/'), 'VOLVO_GetLoginUrl');
     ok(str_contains(VOLVO_GetVisualizationTile($id), 'handleMessage('), 'Kachel-HTML mit Startdaten');
+    foreach ([0, 1, 2] as $theme) {
+        IPS_SetProperty($id, 'TileTheme', $theme);
+        IPS_ApplyChanges($id);
+        ok(str_contains(VOLVO_GetVisualizationTile($id), '\\u0022theme\\u0022:' . $theme), 'Farbschema ' . $theme . ' in den Kacheldaten');
+    }
 
     echo 'Volvo Karte' . PHP_EOL;
     $map = IPS_CreateInstance('{BEC364E9-0470-407D-829E-BC42DC2EB4BC}');
@@ -91,6 +96,11 @@ try {
     IPS_ApplyChanges($map);
     ok(IPS_GetInstance($map)['InstanceStatus'] === 102, 'Mit Volvo-Instanz Status 102');
     ok(str_contains(VOLVOMAP_GetVisualizationTile($map), 'handleMessage('), 'Kachel-HTML mit Startdaten');
+    foreach ([0, 1, 2] as $theme) {
+        IPS_SetProperty($map, 'TileTheme', $theme);
+        IPS_ApplyChanges($map);
+        ok(str_contains(VOLVOMAP_GetVisualizationTile($map), '\\u0022theme\\u0022:' . $theme), 'Farbschema ' . $theme . ' in den Kacheldaten');
+    }
 } catch (Throwable $e) {
     ok(false, get_class($e) . ': ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')');
 }
