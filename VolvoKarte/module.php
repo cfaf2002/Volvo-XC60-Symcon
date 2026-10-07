@@ -138,10 +138,16 @@ class VolvoKarte extends IPSModuleStrict
                     $this->WriteHistory($history);
                 }
             }
+        }
 
-            if ($this->ReadPropertyBoolean('ShowAddress')) {
-                $this->UpdateAddress($pos);
-            }
+        // Alte Punkte auch dann entfernen, wenn das Auto länger steht
+        $history = $this->ReadHistory();
+        if (count($history) > 0 && (int) $history[0][0] < $this->HistoryFrom()) {
+            $this->WriteHistory($history);
+        }
+
+        if ($pos !== null && $this->ReadPropertyBoolean('ShowAddress')) {
+            $this->UpdateAddress($pos);
         }
 
         $this->PushTile();
@@ -454,9 +460,15 @@ class VolvoKarte extends IPSModuleStrict
         return is_array($history) ? $history : [];
     }
 
+    /** Ältester Zeitpunkt, der im Verlauf bleibt. */
+    private function HistoryFrom(): int
+    {
+        return time() - max(1, $this->ReadPropertyInteger('HistoryDays')) * 86400;
+    }
+
     private function WriteHistory(array $history): void
     {
-        $from = time() - max(1, $this->ReadPropertyInteger('HistoryDays')) * 86400;
+        $from = $this->HistoryFrom();
         $history = array_values(array_filter($history, fn ($p) => $p[0] >= $from));
         $history = array_slice($history, -self::MAX_POINTS);
         $this->WriteAttributeString('History', json_encode($history));

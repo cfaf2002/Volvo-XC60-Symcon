@@ -134,7 +134,7 @@ class IPSModuleStrict
     protected function GetStatus(): int { return $this->status; }
     protected function ReloadForm(): bool { return true; }
     protected function SendDebug(string $m, string $d, int $f): bool { $GLOBALS['debug'][] = "$m: $d"; if (getenv('DEBUG')) { echo "  DBG $m: $d\n"; } return true; }
-    protected function LogMessage(string $m, int $t): bool { return true; }
+    protected function LogMessage(string $m, int $t): bool { $GLOBALS['log'][] = $m; return true; }
 }
 
 $failed = 0;

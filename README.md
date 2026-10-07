@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.2](https://img.shields.io/badge/IP--Symcon-ab_8.2-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 3.1 (Build 22)](https://img.shields.io/badge/Modul--Version-3.1_(Build_22)-informational.svg)](library.json)
+[![Modul-Version 3.2 (Build 23)](https://img.shields.io/badge/Modul--Version-3.2_(Build_23)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/Volvo-XC60-Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/Volvo-XC60-Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -217,7 +217,7 @@ Eigene Kachel mit einer **OpenStreetMap-Karte**, die den Standort aus der Volvo-
 
 **Verlauf (per Schalter)**
 - **„Verlauf mitschreiben“** in der Instanz aktivieren. Ein neuer Punkt wird nur gespeichert, wenn sich das Auto um mehr als 30 m bewegt hat.
-- Aufbewahrung einstellbar (Standard 7 Tage, bis 90 Tage). Ältere Punkte werden automatisch entfernt.
+- Aufbewahrung einstellbar (Standard 7 Tage, bis 90 Tage). Ältere Punkte werden automatisch entfernt – auch wenn das Auto länger steht.
 - In der Kachel zwischen **24 h**, **7 Tage** und **Alles** umschalten; die Karte zoomt dann auf den Verlauf.
 - Ausschalten stoppt das Mitschreiben, der bisherige Verlauf bleibt bis „Verlauf löschen“ erhalten.
 
@@ -252,8 +252,8 @@ Im Bereich **„Standort“** der Volvo-Instanz:
 ## Anmeldung abgelaufen?
 
 Volvo begrenzt die Gültigkeit der Freigabe für private Anwendungen. Läuft sie ab, wechselt die Instanz auf
-„Anmeldung bei Volvo erforderlich“ und schickt – falls eingestellt – eine Push-Nachricht. Dann einfach erneut
-**„Bei Volvo anmelden“** klicken.
+„Anmeldung bei Volvo erforderlich“ und schickt – falls eingestellt – eine Push-Nachricht. Bis zur neuen Anmeldung ruht der
+Abruf (keine Warnung alle paar Minuten). Dann einfach erneut **„Bei Volvo anmelden“** klicken.
 
 ## PHP-Befehle
 
@@ -276,7 +276,7 @@ VOLVO_Logout(int $InstanzID)
   ein mitgeschnittener oder alter Anmelde-Link lässt sich nicht einlösen.
 - Die Anmelde-Seite unter `/hook/volvo` wird nicht zwischengespeichert, nicht eingebettet und gibt die Adresse (mit dem Code) nicht weiter
   (`Cache-Control: no-store`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, Content-Security-Policy). Alle Texte darauf werden maskiert, und es werden nur einfache Texte angenommen (kein `code[]=…`).
-- Client-Secret und API-Key stehen nur in der Instanz (Passwortfelder). Tokens, Fahrgestellnummer und Secret erscheinen nicht im Debug-Fenster.
+- Client-Secret und API-Key stehen nur in der Instanz (Passwortfelder). Tokens, Fahrgestellnummer und Secret erscheinen nicht im Debug-Fenster; die Fahrgestellnummer auch nicht in Fehlermeldungen und im Meldungsfenster.
 - Alle Verbindungen (Volvo, OpenStreetMap) nur über HTTPS mit geprüftem Zertifikat; Fahrzeugbild und Kartenlinks werden nur als `https://` an die Kachel gegeben.
 - Die Kacheln setzen alle Werte per `textContent`, nie als HTML. Die Startdaten werden mit `JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT`
   eingebettet, damit kein Wert das Skript der Kachel beenden kann. Ungültige Zeichen in Fremddaten werden ersetzt, statt die Kachel abbrechen zu lassen.
@@ -302,6 +302,10 @@ VOLVO_Logout(int $InstanzID)
 - **„VCC API Key ungültig“:** Den Primary Key aus derselben Volvo-Anwendung nehmen wie Client-ID und Client-Secret (nicht die Client-ID).
 - **HTTP 403:** API Key falsch oder Scopes in der Volvo-Anwendung nicht freigeschaltet.
 - **Anmeldung abgelehnt:** Client-ID/-Secret prüfen; Redirect URI in Volvo-Anwendung und Instanz müssen exakt gleich sein.
+  Lehnt Volvo Client-ID/-Secret ab, bleibt die Freigabe erhalten; das Modul versucht es erst nach 15 Minuten erneut, danach mit jeweils
+  doppelter Wartezeit (höchstens alle 6 Stunden). **Übernehmen** startet sofort einen neuen Versuch.
+- **Einzelner Bereich gestört** (z. B. HTTP 500 oder 429 bei den Fenstern): Die übrigen Werte werden trotzdem aktualisiert; der gestörte
+  Bereich steht im Debug-Fenster. Nur wenn alle Bereiche scheitern, gilt der Abruf als fehlgeschlagen.
 - Alle Anfragen stehen im **Debug-Fenster** der Instanz (Fahrgestellnummer und Tokens werden ausgeblendet).
 
 ## Entwicklung und Tests
@@ -336,6 +340,7 @@ GitHub Actions (`.github/workflows/tests.yml`) prüft bei jedem Push mit PHP 8.3
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 3.2 | 23 | 07.10.2026 | Korrekturen: ein gestörter Bereich (z. B. Fenster mit HTTP 500/429) verwirft nicht mehr den ganzen Abruf, Verbindungen werden immer sauber geschlossen; ohne Anmeldung ruht der Abruf statt alle 5 Minuten zu warnen; abgelehntes Client-Secret löscht nicht mehr die Freigabe, neuer Versuch mit steigender Wartezeit (15 min bis 6 h); Fahrgestellnummer nicht mehr in Fehlermeldungen und Meldungsfenster, gleicher Fehler nur einmal im Meldungsfenster; Meilen werden einheitlich erkannt („mi“ und „miles“); Karten-Verlauf wird auch bei stehendem Auto gekürzt; Klickflächen mindestens 36 px (Standort-Link, Knöpfe der Karte); `STYLEGUIDE.md` und Strukturprüfung aus dem gemeinsamen Stand übernommen |
 | 3.1 | 22 | 06.10.2026 | Hausstil: Kacheln heißen `tile.html` und nutzen die gemeinsame Kachel-Grundlage (Systemschrift, Farben aus den Tokens, Zustandsfarben einheitlich); „Volvo Karte“ bekommt ebenfalls das Farbschema Symcon-Design / Dunkel / Hell; Knöpfe der Karte mindestens 36 px; `STYLEGUIDE.md`, Strukturprüfung und gemeinsamer Test-Workflow |
 | 3.0 | 21 | 04.10.2026 | Prüfung nachgeschärft: Variablen werden nur bei Änderung geschrieben, Anmelde-Seite nimmt nur einfache Texte an, ungültige Zeichen brechen die Kachel nicht mehr ab, Standort-Link in der Akzentfarbe des Symcon-Designs |
 | 3.0 | 20 | 04.10.2026 | Symcon-9.0-Technik: `IPSModuleStrict`, `RegisterHook` im Modul, Darstellungen statt Profile, `openObject` (Standort öffnet die Kachel „Volvo Karte“), Farbschema (Symcon-Design / Dunkel / Hell); Sicherheit: State einmalig und 15 Minuten gültig, Sicherheits-Header der Anmelde-Seite, nur HTTPS mit Zertifikatsprüfung, sichere Einbettung der Kachel-Daten; Geschwindigkeit: paralleler Abruf aller Bereiche, Kachel-Updates nur bei Änderung, Bilder verkleinert und zwischengespeichert, gzip; Tests, Ladetest und MIT-Lizenz |

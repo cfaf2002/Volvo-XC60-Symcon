@@ -49,6 +49,8 @@ class T extends Volvo
 {
     public string $car = 'alt';
     public bool $refreshFails = false;
+    public bool $clientRejected = false;
+    public array $fail = [];         // Pfad-Ende => [HTTP-Code, Antwort]
     public array $calls = [];
     public int $multi = 0;
     public string $lastTokenBody = '';
@@ -76,6 +78,9 @@ class T extends Volvo
         $this->calls[] = $method . ' ' . preg_replace('#https://[^/]+#', '', $url);
         if (str_contains($url, 'token.oauth2')) {
             $this->lastTokenBody = (string) $body;
+            if ($this->clientRejected) {
+                return [401, '{"error":"invalid_client","error_description":"client authentication failed"}'];
+            }
             if (str_contains((string) $body, 'refresh_token') && $this->refreshFails) {
                 return [400, '{"error":"invalid_grant","error_description":"grant expired"}'];
             }
@@ -86,6 +91,11 @@ class T extends Volvo
         }
         $f = fixtures($this->car);
         $path = (string) parse_url($url, PHP_URL_PATH);
+        foreach ($this->fail as $end => $response) {
+            if (str_ends_with($path, $end)) {
+                return $response;
+            }
+        }
         $data = fn (array $d) => [200, json_encode(['data' => $d])];
         return match (true) {
             $path === '/connected-vehicle/v2/vehicles'                    => $data([['vin' => 'YV1ABCDEFG1234567']]),
@@ -197,6 +207,36 @@ check(str_contains($msg, 'gehört nicht') && count($m->calls) === $n, 'Fremde An
 $dbg = implode("\n", $GLOBALS['debug']);
 check(!str_contains($dbg, 'YV1ABCDEFG1234567') && !str_contains($dbg, 'sec') && !str_contains($dbg, 'AT1'), 'Debug zeigt weder Fahrgestellnummer noch Secret oder Token');
 
+echo "Korrekturen 3.2\n";
+$m->fail = ['/windows' => [500, 'Internal error for YV1ABCDEFG1234567']];
+$m->v['Odometer'] = 0;
+check($m->Update() === true && $m->v['Odometer'] === 30000 && $m->status === 102, 'Gestörter Endpunkt (/windows 500) verwirft nicht den ganzen Abruf');
+$m->fail = ['/state' => [429, ''], '/fuel' => [500, ''], '/statistics' => [500, ''], '/odometer' => [500, ''], '/doors' => [500, ''], '/windows' => [500, 'YV1ABCDEFG1234567']];
+check($m->Update() === false && $m->status === 203, 'Alle Bereiche gestört: Abruf fehlgeschlagen (Status 203)');
+check(!str_contains($m->v['LastError'], 'YV1ABCDEFG1234567') && !str_contains(implode("\n", $GLOBALS['log'] ?? []), 'YV1ABCDEFG1234567'), 'Fahrgestellnummer nicht in Fehlermeldung und Meldungsfenster');
+$GLOBALS['log'] = []; $m->Update(); $m->Update();
+check(count($GLOBALS['log']) === 0, 'Gleicher Fehler nicht bei jedem Abruf erneut im Meldungsfenster');
+$m->fail = [];
+$m->Update();
+// Falsches Client-Secret: Freigabe bleibt, Wartezeit statt Versuch bei jedem Abruf
+$m->a['TokenExpires'] = 0; $m->clientRejected = true; $n = count($m->calls);
+$m->Update();
+check($m->a['RefreshToken'] === 'RT' && $m->status === 202 && $m->a['AuthFailures'] === 1 && $m->timers['UpdateTimer'] === 900000,
+    'Client-Secret abgelehnt (401): Refresh-Token bleibt, nächster Versuch in 15 min');
+$m->Update(); $m->Update();
+check(count(array_filter(array_slice($m->calls, $n), fn ($c) => $c === 'POST /as/token.oauth2')) === 1, 'Während der Wartezeit keine weiteren Token-Anfragen');
+$m->clientRejected = false; $m->ApplyChanges();
+check($m->a['AuthFailures'] === 0 && $m->timers['UpdateTimer'] === 300000 && $m->Update() === true, '„Übernehmen“ hebt die Wartezeit auf, Abruf klappt wieder');
+// Ohne Anmeldung kein Abruf-Timer
+$m3 = new T(); $m3->Create(); $m3->p['ApiKey'] = 'KEY'; $m3->p['ClientId'] = 'c'; $m3->p['ClientSecret'] = 's'; $m3->ApplyChanges();
+check($m3->status === 202 && $m3->timers['UpdateTimer'] === 0, 'Nicht angemeldet: Abruf-Timer steht (keine Warnung alle 5 min)');
+$u3 = $m3->GetLoginUrl(); parse_str((string) parse_url($u3, PHP_URL_QUERY), $q3);
+$m3->CompleteLogin('https://abc123.ipmagic.de/hook/volvo?code=ABC&state=' . $q3['state']);
+check($m3->timers['UpdateTimer'] === 300000 && $m3->status === 102, 'Nach der Anmeldung läuft der Abruf-Timer');
+$m3->a['TokenExpires'] = 0; $m3->refreshFails = true; $m3->Update();
+check($m3->a['RefreshToken'] === '' && $m3->timers['UpdateTimer'] === 0, 'Freigabe abgelaufen (invalid_grant): Timer steht bis zur neuen Anmeldung');
+check(call($m3, 'IsMiles', ['unit' => 'mi']) && call($m3, 'IsMiles', ['unit' => 'miles']) && !call($m3, 'IsMiles', ['unit' => 'km']), 'Meilen werden als „mi“ und „miles“ erkannt');
+
 echo "Geschwindigkeit\n";
 $m->multi = 0; $m->Update();
 check($m->multi === 1, 'Alle Bereiche in einem parallelen Abruf');
@@ -291,6 +331,9 @@ $k->p['MarkerType'] = 1; $k->ApplyChanges();
 check(json_decode((string) $k->tile, true)['marker']['type'] === 'free', 'Volvo-Fahrzeugbild als Symbol');
 $k->p['MarkerType'] = 2; $k->p['MarkerImage'] = base64_encode('<svg onload="alert(1)"/>'); $k->ApplyChanges();
 check(json_decode((string) $k->tile, true)['marker']['type'] === 'icon', 'Keine Bilddatei hochgeladen → Standard-Symbol');
+$k->a['History'] = json_encode([[time() - 30 * 86400, 52.1, 13.1], [time() - 3600, 52.2, 13.2]]);
+$k->Refresh();
+check(count(json_decode($k->GetHistory(), true)) === 1, 'Verlauf wird auch ohne Bewegung auf die eingestellten Tage gekürzt');
 $k->pushes = []; $k->Refresh(); $k->Refresh();
 check(count($k->pushes) === 0, 'Unveränderte Karte wird nicht erneut gesendet');
 check(($k->pres['Address']['PRESENTATION'] ?? '') === VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'Adresse mit Darstellung „Wertanzeige“');

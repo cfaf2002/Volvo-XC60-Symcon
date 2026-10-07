@@ -129,6 +129,9 @@
     .vx-value.loc a { color: var(--accent); text-decoration: underline; text-decoration-style: dotted; text-decoration-thickness: 1px;
                       text-underline-offset: 3px; border-bottom: 0; }
     .vx-value.loc small { margin-left: 0; font-size: .78em; }
+    /* Klickfläche des Standort-Links: ganze Zeile (mindestens 36 px hoch) */
+    #rowLocation { position: relative; min-height: 36px; }
+    .vx-value.loc a::after { content: ''; position: absolute; inset: 0; }
 
     @keyframes pulse { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--s) 0%, transparent); } }
     @keyframes glow { 50% { opacity: .55; } }
@@ -380,7 +383,7 @@
         if (open) $('open').textContent = s.openParts;
 
         // Standort
-        const hasLoc = !!s.mapLink;
+        const hasLoc = typeof s.mapLink === 'string' && /^https:\/\//.test(s.mapLink);
         $('rowLocation').classList.toggle('hide', !hasLoc);
         if (hasLoc) {
             const a = s.address;

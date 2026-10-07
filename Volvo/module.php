@@ -42,6 +42,10 @@ class Volvo extends IPSModuleStrict
     private const HOOK = '/hook/volvo';
     private const LOGIN_VALID = 900;        // Anmelde-Link gilt 15 Minuten
 
+    // Lehnt Volvo Client-ID/Client-Secret ab: erst nach 15 min, 30 min, 60 min … erneut versuchen (höchstens alle 6 h)
+    private const AUTH_BACKOFF_FIRST = 900;
+    private const AUTH_BACKOFF_MAX = 21600;
+
     /** Ladestatus: [Wert, Text, Symbol, Farbe] */
     private const CHARGING_OPTIONS = [
         [0, 'Unbekannt', 'circle-question', 0x7F8C8D],
@@ -95,6 +99,8 @@ class Volvo extends IPSModuleStrict
         $this->RegisterAttributeString('AccessToken', '');
         $this->RegisterAttributeString('RefreshToken', '');
         $this->RegisterAttributeInteger('TokenExpires', 0);
+        $this->RegisterAttributeInteger('AuthFailures', 0);
+        $this->RegisterAttributeInteger('AuthBlockedUntil', 0);
         $this->RegisterAttributeString('CodeVerifier', '');
         $this->RegisterAttributeString('AuthState', '');
         $this->RegisterAttributeInteger('AuthStarted', 0);
@@ -150,13 +156,18 @@ class Volvo extends IPSModuleStrict
             return;
         }
 
-        $this->SetTimerInterval('UpdateTimer', max(1, $this->ReadPropertyInteger('UpdateInterval')) * 60 * 1000);
+        // „Übernehmen“ startet nach abgelehnter Anmeldung sofort einen neuen Versuch
+        $this->WriteAttributeInteger('AuthFailures', 0);
+        $this->WriteAttributeInteger('AuthBlockedUntil', 0);
 
+        // Ohne Anmeldung nicht abrufen (sonst alle paar Minuten dieselbe Warnung)
         if ($this->ReadAttributeString('RefreshToken') === '') {
+            $this->SetTimerInterval('UpdateTimer', 0);
             $this->SetStatus(202);
             return;
         }
 
+        $this->SetTimerInterval('UpdateTimer', $this->UpdateIntervalMs());
         $this->SetStatus(102);
     }
 
@@ -289,6 +300,7 @@ class Volvo extends IPSModuleStrict
         $this->WriteAttributeString('AccessToken', '');
         $this->WriteAttributeString('RefreshToken', '');
         $this->WriteAttributeInteger('TokenExpires', 0);
+        $this->SetTimerInterval('UpdateTimer', 0);
         $this->SetStatus(202);
         $this->ReloadForm();
     }
@@ -356,7 +368,12 @@ class Volvo extends IPSModuleStrict
         $this->WriteAttributeString('AuthState', '');
         $this->WriteAttributeString('CodeVerifier', '');
         $this->WriteAttributeInteger('LoginNotified', 0);
+        $this->WriteAttributeInteger('AuthFailures', 0);
+        $this->WriteAttributeInteger('AuthBlockedUntil', 0);
         $this->SetStatus(102);
+        if ($this->ReadPropertyBoolean('Active')) {
+            $this->SetTimerInterval('UpdateTimer', $this->UpdateIntervalMs());
+        }
     }
 
     private function GetAccessToken(): string
@@ -377,14 +394,32 @@ class Volvo extends IPSModuleStrict
                 throw new VolvoLoginException('Nicht angemeldet. Bitte in der Instanz „Bei Volvo anmelden“.');
             }
 
+            // Nach abgelehnter Client-ID/Client-Secret nicht bei jedem Abruf neu probieren
+            $blocked = $this->ReadAttributeInteger('AuthBlockedUntil');
+            if ($blocked > time()) {
+                throw new VolvoLoginException('Volvo lehnt Client-ID/Client-Secret ab. Nächster Versuch um ' . date('H:i', $blocked)
+                    . ' Uhr – Angaben prüfen, „Übernehmen“ startet sofort einen neuen Versuch.');
+            }
+
             try {
-                return $this->RequestToken(['grant_type' => 'refresh_token', 'refresh_token' => $refresh]);
-            } catch (VolvoLoginException $e) {
-                // Freigabe abgelaufen -> neu anmelden
+                $token = $this->RequestToken(['grant_type' => 'refresh_token', 'refresh_token' => $refresh]);
+            } catch (VolvoGrantException $e) {
+                // Freigabe abgelaufen oder widerrufen -> neu anmelden
                 $this->WriteAttributeString('AccessToken', '');
                 $this->WriteAttributeString('RefreshToken', '');
+                $this->SetTimerInterval('UpdateTimer', 0);
                 throw new VolvoLoginException('Die Anmeldung bei Volvo ist abgelaufen. Bitte in der Instanz neu anmelden.');
+            } catch (VolvoLoginException $e) {
+                // Client-ID/Client-Secret abgelehnt: Freigabe behalten, mit Wartezeit erneut versuchen
+                $this->AuthBackoff();
+                throw $e;
             }
+            if ($this->ReadAttributeInteger('AuthFailures') > 0) {
+                $this->WriteAttributeInteger('AuthFailures', 0);
+                $this->WriteAttributeInteger('AuthBlockedUntil', 0);
+                $this->SetTimerInterval('UpdateTimer', $this->UpdateIntervalMs());
+            }
+            return $token;
         } finally {
             IPS_SemaphoreLeave($lock);
         }
@@ -403,8 +438,11 @@ class Volvo extends IPSModuleStrict
         $json = json_decode($raw, true);
 
         if ($code === 400 || $code === 401) {
-            $reason = is_array($json) ? ($json['error_description'] ?? $json['error'] ?? '') : '';
-            throw new VolvoLoginException('Volvo hat die Anmeldung abgelehnt (HTTP ' . $code . ($reason !== '' ? ': ' . $reason : '') . ').');
+            $error = is_array($json) ? (string) ($json['error'] ?? '') : '';
+            $reason = is_array($json) ? (string) ($json['error_description'] ?? $error) : '';
+            $message = 'Volvo hat die Anmeldung abgelehnt (HTTP ' . $code . ($reason !== '' ? ': ' . $reason : '') . ').';
+            // invalid_grant: Code oder Refresh-Token ungültig/abgelaufen; alles andere (z. B. invalid_client) betrifft die Zugangsdaten
+            throw $error === 'invalid_grant' ? new VolvoGrantException($message) : new VolvoLoginException($message);
         }
         if ($code !== 200 || !is_array($json) || empty($json['access_token'])) {
             throw new Exception('Token-Abruf fehlgeschlagen (HTTP ' . $code . ').');
@@ -420,6 +458,24 @@ class Volvo extends IPSModuleStrict
         return (string) $json['access_token'];
     }
 
+    /** Wartezeit nach abgelehnter Client-ID/Client-Secret verdoppeln: 15 min, 30 min, 60 min … höchstens 6 h. */
+    private function AuthBackoff(): void
+    {
+        $failures = $this->ReadAttributeInteger('AuthFailures') + 1;
+        $this->WriteAttributeInteger('AuthFailures', $failures);
+        $wait = (int) min(self::AUTH_BACKOFF_MAX, self::AUTH_BACKOFF_FIRST * 2 ** min(10, $failures - 1));
+        $this->WriteAttributeInteger('AuthBlockedUntil', time() + $wait);
+        if ($this->ReadPropertyBoolean('Active')) {
+            $this->SetTimerInterval('UpdateTimer', max($wait * 1000, $this->UpdateIntervalMs()));
+        }
+        $this->SendDebug('Token', sprintf('Anmeldung %d× abgelehnt - nächster Versuch in %d min', $failures, $wait / 60), 0);
+    }
+
+    private function UpdateIntervalMs(): int
+    {
+        return max(1, $this->ReadPropertyInteger('UpdateInterval')) * 60 * 1000;
+    }
+
     // =================================================================
     // Daten abrufen
     // =================================================================
@@ -433,11 +489,18 @@ class Volvo extends IPSModuleStrict
 
         try {
             $vin = $this->GetVin();
-            // Modell/Akkugröße/Bild braucht das Recht conve:vehicle_relation - optional
-            $this->Optional(function () use ($vin) {
-                $this->LoadVehicleDetails($vin);
-                return [];
-            });
+            // Modell/Akkugröße/Bild braucht das Recht conve:vehicle_relation - optional;
+            // eine Störung dieses Endpunkts hält den übrigen Abruf nicht auf
+            try {
+                $this->Optional(function () use ($vin) {
+                    $this->LoadVehicleDetails($vin);
+                    return [];
+                });
+            } catch (VolvoLoginException $e) {
+                throw $e;
+            } catch (Exception $e) {
+                $this->SendDebug('Übersprungen', $e->getMessage(), 0);
+            }
 
             // Energie (Akku, Laden) - ältere Hybride liefern hier nicht alles
             // Einzelne Bereiche dürfen fehlen (Recht nicht freigegeben oder
@@ -583,7 +646,7 @@ class Volvo extends IPSModuleStrict
         $range = self::Value($stats, 'distanceToEmptyBattery');
         if ($range === null) {
             $range = self::EnergyValue($energy, 'electricRange');
-            if ($range !== null && (($energy['electricRange']['unit'] ?? '') === 'miles')) {
+            if ($range !== null && self::IsMiles($energy['electricRange'])) {
                 $range = (float) $range * 1.609344;
             }
         }
@@ -627,7 +690,7 @@ class Volvo extends IPSModuleStrict
 
         $km = self::Value($odo, 'odometer');
         if ($km !== null) {
-            if (($odo['odometer']['unit'] ?? 'km') === 'mi') {
+            if (self::IsMiles($odo['odometer'])) {
                 $km = (float) $km * 1.609344;
             }
             $this->SetValue('Odometer', (int) round((float) $km));
@@ -712,11 +775,25 @@ class Volvo extends IPSModuleStrict
             $requests[$key] = ['GET', self::API . $path, $headers, null];
         }
 
+        // Ein gestörter Bereich (z. B. 500 oder 429 bei /windows) verwirft nicht den ganzen Abruf;
+        // nur wenn alle Bereiche scheitern, gilt der Abruf als fehlgeschlagen
         $out = [];
+        $errors = [];
         foreach ($this->HttpRequestMulti($requests) as $key => [$code, $raw]) {
-            $out[$key] = $code === 401
-                ? $this->Optional(fn () => $this->Api($paths[$key]))
-                : $this->Optional(fn () => $this->ParseApi($code, $raw, $paths[$key]));
+            try {
+                $out[$key] = $code === 401
+                    ? $this->Optional(fn () => $this->Api($paths[$key]))
+                    : $this->Optional(fn () => $this->ParseApi($code, $raw, $paths[$key]));
+            } catch (VolvoLoginException $e) {
+                throw $e;
+            } catch (Exception $e) {
+                $out[$key] = [];
+                $errors[] = $e;
+                $this->SendDebug('Übersprungen', $e->getMessage(), 0);
+            }
+        }
+        if (count($errors) > 0 && count($errors) === count($paths)) {
+            throw $errors[0];
         }
         return $out;
     }
@@ -724,6 +801,10 @@ class Volvo extends IPSModuleStrict
     /** Antwort der Volvo-API auswerten. */
     private function ParseApi(int $code, string $raw, string $path): array
     {
+        $path = self::MaskVin($path);
+        if ($code === 0) {
+            throw new Exception(($raw !== '' ? $raw : 'Verbindungsfehler') . ' bei ' . $path);
+        }
         if ($code === 401 && stripos($raw, 'VCC-API-KEY') !== false) {
             throw new Exception('VCC API Key ungültig – bitte den Primary Key aus derselben Volvo-Anwendung eintragen wie Client-ID und Client-Secret.');
         }
@@ -737,7 +818,7 @@ class Volvo extends IPSModuleStrict
             throw new Exception('Volvo API-Limit erreicht (HTTP 429). Abrufintervall erhöhen.');
         }
         if ($code < 200 || $code >= 300) {
-            throw new Exception('Volvo API Fehler HTTP ' . $code . ' bei ' . $path . ': ' . mb_substr($raw, 0, 200));
+            throw new Exception('Volvo API Fehler HTTP ' . $code . ' bei ' . $path . ': ' . mb_substr(self::MaskVin($raw), 0, 200));
         }
 
         $json = json_decode($raw, true);
@@ -806,15 +887,18 @@ class Volvo extends IPSModuleStrict
             $results[spl_object_id($info['handle'])] = $info['result'];
         }
 
+        // Verbindungsfehler einer Anfrage als HTTP 0 weitergeben; Handles werden immer freigegeben
         $out = [];
         foreach ($handles as $key => $ch) {
             $result = $results[spl_object_id($ch)] ?? CURLE_OK;
             $raw = $result === CURLE_OK ? (string) curl_multi_getcontent($ch) : false;
-            if ($raw === false) {
-                $this->SendDebug('Fehler', curl_strerror($result), 0);
+            try {
+                $out[$key] = $this->Finish($requests[$key][0], $requests[$key][1], $ch, $raw);
+            } catch (Exception $e) {
+                $out[$key] = [0, 'Verbindungsfehler: ' . curl_strerror($result)];
+            } finally {
+                curl_multi_remove_handle($multi, $ch);
             }
-            $out[$key] = $this->Finish($requests[$key][0], $requests[$key][1], $ch, $raw);
-            curl_multi_remove_handle($multi, $ch);
         }
         curl_multi_close($multi);
         return $out;
@@ -847,14 +931,14 @@ class Volvo extends IPSModuleStrict
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
         // Fahrgestellnummer und Tokens nicht im Debug zeigen
-        $shown = preg_replace('#/vehicles/[A-Z0-9]{17}#', '/vehicles/***', preg_replace('#\?.*$#', '', $url));
+        $shown = self::MaskVin(preg_replace('#\?.*$#', '', $url));
         $this->SendDebug($method, $shown . ' -> HTTP ' . $code, 0);
 
         if ($raw === false) {
             throw new Exception('Verbindungsfehler: ' . (curl_error($ch) ?: 'keine Antwort'));
         }
         if (strpos($url, 'volvoid') === false) {
-            $this->SendDebug('Antwort', mb_substr(preg_replace('#[A-Z0-9]{17}#', '***', $raw), 0, 1500), 0);
+            $this->SendDebug('Antwort', mb_substr(self::MaskVin($raw), 0, 1500), 0);
         }
 
         return [$code, $raw];
@@ -895,6 +979,18 @@ class Volvo extends IPSModuleStrict
     // =================================================================
     // Hilfen
     // =================================================================
+
+    /** Fahrgestellnummer (17 Zeichen) in Debug, Fehlermeldungen und Meldungsfenster ausblenden. */
+    private static function MaskVin(string $text): string
+    {
+        return (string) preg_replace('#\b[A-HJ-NPR-Z0-9]{17}\b#', '***', $text);
+    }
+
+    /** Einheit in Meilen? Volvo liefert je nach Endpunkt „mi“ oder „miles“. */
+    private static function IsMiles(array $field): bool
+    {
+        return in_array(strtolower((string) ($field['unit'] ?? '')), ['mi', 'mile', 'miles'], true);
+    }
 
     /** Wert aus der Energy API ({status, value}) - null wenn nicht unterstützt. */
     private static function EnergyValue(array $energy, string $key)
@@ -1089,10 +1185,14 @@ class Volvo extends IPSModuleStrict
 
     private function ReportError(string $message, int $status): void
     {
+        $message = self::MaskVin($message);
+        // Nur bei neuer Fehlermeldung ins Meldungsfenster, nicht bei jedem Abruf
+        if ($message !== (string) $this->GetValue('LastError')) {
+            $this->LogMessage($message, KL_WARNING);
+        }
         $this->SetValue('LastError', $message);
         $this->SetStatus($status);
         $this->PushTile();
-        $this->LogMessage($message, KL_WARNING);
     }
 
     private function Notify(string $title, string $text): void
@@ -1214,5 +1314,10 @@ class VolvoLoginException extends Exception
 }
 
 class VolvoForbiddenException extends Exception
+{
+}
+
+/** Anmelde-Code oder Refresh-Token ungültig/abgelaufen (invalid_grant) - neu anmelden nötig. */
+class VolvoGrantException extends VolvoLoginException
 {
 }
