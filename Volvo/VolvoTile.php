@@ -106,7 +106,8 @@ trait VolvoTile
 
     /**
      * Bild aus einer Eigenschaft (SelectFile, base64) als data-URL – einmal geprüft,
-     * auf 1600 Pixel verkleinert und zwischengespeichert.
+     * auf 1200 Pixel verkleinert und im Buffer zwischengespeichert (nicht im Attribut,
+     * das in der settings.json landet).
      */
     private function TileImageDataUrl(string $property): string
     {
@@ -115,18 +116,22 @@ trait VolvoTile
             return '';
         }
         $key = $property . ':' . md5($base64);
-        $cache = json_decode($this->ReadAttributeString('ImageCache'), true) ?: [];
+        $cache = json_decode($this->GetBuffer('ImageCache'), true) ?: [];
         if (isset($cache[$key])) {
             return $cache[$key];
         }
 
         $raw = base64_decode($base64, true);
-        $url = $raw === false ? '' : self::ShrinkImage($raw, 1600);
-        $this->WriteAttributeString('ImageCache', json_encode([$key => $url]));
+        $url = $raw === false ? '' : self::ShrinkImage($raw, 1200);
+        $this->SetBuffer('ImageCache', (string) json_encode([$key => $url]));
         return $url;
     }
 
-    /** Erlaubt nur echte Bilder (PNG, JPEG, WebP) und verkleinert sie auf $max Pixel. */
+    /**
+     * Erlaubt nur echte Bilder (PNG, JPEG, WebP, GIF) und verkleinert sie auf höchstens $max Pixel.
+     * Bilder ohne Transparenz werden JPEG (viel kleiner als PNG), freigestellte Bilder bleiben PNG.
+     * Ist das Ergebnis noch zu groß, wird schrittweise kleiner gerechnet – die Kachel soll schnell öffnen.
+     */
     private static function ShrinkImage(string $raw, int $max): string
     {
         if (strncmp($raw, "\x89PNG", 4) === 0) {
@@ -135,23 +140,60 @@ trait VolvoTile
             $mime = 'image/jpeg';
         } elseif (strncmp($raw, 'RIFF', 4) === 0 && substr($raw, 8, 4) === 'WEBP') {
             $mime = 'image/webp';
+        } elseif (strncmp($raw, 'GIF8', 4) === 0) {
+            $mime = 'image/gif';
         } else {
-            return '';
+            return '';                        // kein Bild -> nicht einbetten
         }
 
-        if (function_exists('imagecreatefromstring') && ($img = @imagecreatefromstring($raw)) !== false) {
-            $w = imagesx($img);
-            $h = imagesy($img);
-            if (max($w, $h) > $max) {
-                $f = $max / max($w, $h);
-                $out = imagecreatetruecolor(max(1, (int) round($w * $f)), max(1, (int) round($h * $f)));
-                imagecopyresampled($out, $img, 0, 0, 0, 0, imagesx($out), imagesy($out), $w, $h);
-                ob_start();
-                imagejpeg($out, null, 82);
-                $raw = (string) ob_get_clean();
-                $mime = 'image/jpeg';
+        $info = @getimagesizefromstring($raw);
+        if ($info === false || $info[0] * $info[1] > 40000000 || !function_exists('imagecreatefromstring')
+            || ($img = @imagecreatefromstring($raw)) === false) {
+            // ohne Bildbearbeitung (oder bei Riesenbildern) nur kleine Bilder unverändert übernehmen
+            return strlen($raw) <= 700000 ? 'data:' . $mime . ';base64,' . base64_encode($raw) : '';
+        }
+        $w = imagesx($img);
+        $h = imagesy($img);
+        $alpha = self::HasAlpha($raw, $mime);
+        $best = '';
+        foreach ([[$max, 80], [(int) round($max * 0.8), 72], [(int) round($max * 0.6), 65]] as [$size, $quality]) {
+            $f = min(1.0, $size / max($w, $h));
+            $nw = max(1, (int) round($w * $f));
+            $nh = max(1, (int) round($h * $f));
+            $out = imagecreatetruecolor($nw, $nh);
+            if ($alpha) {                     // Transparenz (z. B. freigestelltes Auto) erhalten
+                imagealphablending($out, false);
+                imagesavealpha($out, true);
+                imagefill($out, 0, 0, imagecolorallocatealpha($out, 0, 0, 0, 127));
+            }
+            imagecopyresampled($out, $img, 0, 0, 0, 0, $nw, $nh, $w, $h);
+            ob_start();
+            $alpha ? imagepng($out, null, 9) : imagejpeg($out, null, $quality);
+            $data = (string) ob_get_clean();
+            unset($out);
+            // ein kleines Original ist manchmal schon kleiner als die Neuberechnung
+            if ($f >= 1.0 && strlen($raw) <= strlen($data) && ($alpha ? $mime === 'image/png' : $mime === 'image/jpeg')) {
+                $data = $raw;
+            }
+            $best = 'data:' . ($data === $raw ? $mime : ($alpha ? 'image/png' : 'image/jpeg')) . ';base64,' . base64_encode($data);
+            if (strlen($data) <= 300000) {
+                break;
             }
         }
-        return 'data:' . $mime . ';base64,' . base64_encode($raw);
+        unset($img);
+        return strlen($best) * 3 / 4 <= 700000 ? $best : '';
+    }
+
+    /** Hat das Bild einen Alphakanal? (PNG: Farbtyp 4/6 oder tRNS, WebP: ALPH/VP8X-Flag, GIF: immer möglich) */
+    private static function HasAlpha(string $raw, string $mime): bool
+    {
+        if ($mime === 'image/png') {
+            $type = ord($raw[25] ?? "\0");
+            return $type === 4 || $type === 6 || str_contains(substr($raw, 0, 4096), 'tRNS');
+        }
+        if ($mime === 'image/webp') {
+            return substr($raw, 12, 4) === 'VP8X' ? (ord($raw[20] ?? "\0") & 0x10) !== 0 : false;
+        }
+        return $mime === 'image/gif';
     }
 }

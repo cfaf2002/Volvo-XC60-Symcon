@@ -116,7 +116,7 @@ class Volvo extends IPSModuleStrict
         $this->RegisterPropertyString('TileBackground', '');
         $this->RegisterPropertyInteger('TileDim', 55);
         $this->RegisterPropertyInteger('TileTheme', 0);         // 0 = Symcon-Design, 1 = Dunkel, 2 = Hell
-        $this->RegisterAttributeString('ImageCache', '{}');
+        $this->RegisterAttributeString('ImageCache', '{}'); // nicht mehr genutzt (jetzt im Buffer), wird einmalig geleert
         $this->SetVisualizationType(1);
 
         // Rückruf von Volvo nach der Anmeldung (ab Symcon 8.1 direkt im Modul, wird beim Löschen automatisch entfernt)
@@ -126,6 +126,11 @@ class Volvo extends IPSModuleStrict
     public function ApplyChanges(): void
     {
         parent::ApplyChanges();
+
+        // Früher lag das verkleinerte Kachelbild im Attribut (settings.json) – einmalig leeren
+        if ($this->ReadAttributeString('ImageCache') !== '{}') {
+            $this->WriteAttributeString('ImageCache', '{}');
+        }
 
         $this->RegisterMessage(0, IPS_KERNELSTARTED);
         $this->CreateVariables();

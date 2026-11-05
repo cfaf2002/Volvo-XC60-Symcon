@@ -2,7 +2,7 @@
 
 [![IP-Symcon ab 8.2](https://img.shields.io/badge/IP--Symcon-ab_8.2-0b6fb3.svg)](https://www.symcon.de)
 [![Optimiert für Symcon 9.0](https://img.shields.io/badge/optimiert_f%C3%BCr-Symcon_9.0-0b6fb3.svg)](https://www.symcon.de/de/service/dokumentation/installation/migrationen/v81-v90-q1-2026/)
-[![Modul-Version 3.2 (Build 23)](https://img.shields.io/badge/Modul--Version-3.2_(Build_23)-informational.svg)](library.json)
+[![Modul-Version 3.3 (Build 24)](https://img.shields.io/badge/Modul--Version-3.3_(Build_24)-informational.svg)](library.json)
 [![Tests](https://github.com/cfaf2002/Volvo-XC60-Symcon/actions/workflows/tests.yml/badge.svg)](https://github.com/cfaf2002/Volvo-XC60-Symcon/actions/workflows/tests.yml)
 [![PHP 8.3 und 8.5](https://img.shields.io/badge/PHP-8.3_%7C_8.5-777bb4.svg?logo=php&logoColor=white)](https://www.php.net)
 [![SDK: IPSModuleStrict](https://img.shields.io/badge/SDK-IPSModuleStrict-success.svg)](https://www.symcon.de/de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/module/)
@@ -178,7 +178,7 @@ Die Instanz bringt eine eigene Kachel mit – einfach in der Kachel-Visualisieru
   Reichweite rechts; quadratisch (2×2) zusätzlich Standort und Kilometerstand. Verriegelung, Türen und Fenster als farbige Symbole.
 - **Farbschema** unter „Kachel“: **Symcon-Design** (Standard) übernimmt Schrift- und Akzentfarbe der gewählten Visualisierung,
   **Dunkel** und **Hell** sind feste Schemas.
-- Optional ein **Hintergrundbild** unter „Kachel“ in der Instanz. Große Fotos werden einmal auf 1600 Pixel verkleinert und zwischengespeichert.
+- Optional ein **Hintergrundbild** unter „Kachel“ in der Instanz. Große Fotos werden einmal auf 1200 Pixel verkleinert (Fotos als JPEG, freigestellte Bilder bleiben PNG) und im Arbeitsspeicher zwischengespeichert.
 - Die Systemeinstellung „Bewegung reduzieren“ wird beachtet; solange die Kachel nicht zu sehen ist, ruhen die Animationen.
 
 Es werden nur Werte angezeigt, die das Fahrzeug tatsächlich liefert.
@@ -340,6 +340,7 @@ GitHub Actions (`.github/workflows/tests.yml`) prüft bei jedem Push mit PHP 8.3
 
 | Version | Build | Datum | Beschreibung |
 |---|---|---|---|
+| 3.3 | 24 | 05.11.2026 | Kachel öffnet schneller: Hintergrundbild höchstens 1200 px, Fotos ohne Transparenz als JPEG, bei Bedarf schrittweise kleiner (Ziel unter 300 KB); verkleinertes Bild liegt im Buffer statt im Attribut, die `settings.json` wird dadurch nicht mehr aufgebläht (alter Eintrag wird beim Übernehmen geleert) |
 | 3.2 | 23 | 07.10.2026 | Korrekturen: ein gestörter Bereich (z. B. Fenster mit HTTP 500/429) verwirft nicht mehr den ganzen Abruf, Verbindungen werden immer sauber geschlossen; ohne Anmeldung ruht der Abruf statt alle 5 Minuten zu warnen; abgelehntes Client-Secret löscht nicht mehr die Freigabe, neuer Versuch mit steigender Wartezeit (15 min bis 6 h); Fahrgestellnummer nicht mehr in Fehlermeldungen und Meldungsfenster, gleicher Fehler nur einmal im Meldungsfenster; Meilen werden einheitlich erkannt („mi“ und „miles“); Karten-Verlauf wird auch bei stehendem Auto gekürzt; Klickflächen mindestens 36 px (Standort-Link, Knöpfe der Karte); `STYLEGUIDE.md` und Strukturprüfung aus dem gemeinsamen Stand übernommen |
 | 3.1 | 22 | 06.10.2026 | Hausstil: Kacheln heißen `tile.html` und nutzen die gemeinsame Kachel-Grundlage (Systemschrift, Farben aus den Tokens, Zustandsfarben einheitlich); „Volvo Karte“ bekommt ebenfalls das Farbschema Symcon-Design / Dunkel / Hell; Knöpfe der Karte mindestens 36 px; `STYLEGUIDE.md`, Strukturprüfung und gemeinsamer Test-Workflow |
 | 3.0 | 21 | 04.10.2026 | Prüfung nachgeschärft: Variablen werden nur bei Änderung geschrieben, Anmelde-Seite nimmt nur einfache Texte an, ungültige Zeichen brechen die Kachel nicht mehr ab, Standort-Link in der Akzentfarbe des Symcon-Designs |

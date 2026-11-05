@@ -281,6 +281,13 @@ $m->v['LastError'] = $err;
 $own = substr_count((string) file_get_contents(__DIR__ . '/../Volvo/tile.html'), '</script>');
 check(!str_contains($html, '</script><img') && substr_count($html, '</script>') === $own + 1, 'Eingeschleustes HTML kann das Kachel-Skript nicht beenden');
 check(!str_contains((string) file_get_contents(__DIR__ . '/../Volvo/tile.html'), '.innerHTML'), 'Kachel setzt Werte nur als Text (kein innerHTML)');
+$img = imagecreatetruecolor(3200, 2000);
+ob_start(); imagepng($img); $m->p['TileBackground'] = base64_encode((string) ob_get_clean());
+$url = call($m, 'TileImageDataUrl', 'TileBackground');
+$size = getimagesizefromstring((string) base64_decode(substr($url, strlen('data:image/jpeg;base64,'))));
+check(str_starts_with($url, 'data:image/jpeg;base64,') && $size[0] <= 1200, 'Großes PNG-Foto wird auf höchstens 1200 px als JPEG verkleinert');
+check(call($m, 'TileImageDataUrl', 'TileBackground') === $url && isset($m->buffers['ImageCache']) && ($m->a['ImageCache'] ?? '{}') === '{}', 'Verkleinertes Bild liegt im Buffer, nicht in der settings.json');
+$m->p['TileBackground'] = '';
 
 echo "Symcon 9.0: Darstellungen\n";
 check($m->pres['ChargingStatus']['PRESENTATION'] === VARIABLE_PRESENTATION_ENUMERATION && str_contains($m->pres['ChargingStatus']['OPTIONS'], 'Lädt'), 'Ladestatus als Aufzählung');
